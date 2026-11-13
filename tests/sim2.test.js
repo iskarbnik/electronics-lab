@@ -135,3 +135,15 @@ test('npn with a heavy load current is limited by the load, not beta', () => {
   const c = npnCircuit({ rb: 1000 });
   assert.equal(simulate(c).comps.Q1.state, 'sat');
 });
+
+test('npn burns when the base is driven straight from the supply', () => {
+  const c = npnCircuit({ rb: 0.01 });
+  const s = simulate(c);
+  assert.ok(s.events.some(e => e.id === 'Q1'), 'Q1 should burn');
+  assert.ok(c.comps.find(x => x.id === 'Q1').burned);
+  assert.equal(simulate(c).comps.Q1.state, 'off');
+});
+
+test('sine generator alternates around zero', () => {
+  near(genVoltage({ wave: 'sine', f: 1, v: 5 }, 0.75), -5, 1e-9);
+});

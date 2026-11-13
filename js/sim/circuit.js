@@ -11,7 +11,8 @@ export const LED_NOMINAL_A = 0.02;   // comfortable LED current
 export const LED_BURN_A = 0.05;      // above this the LED dies
 export const DIODE_VF = 0.7;         // silicon diode and transistor base-emitter drop
 export const DIODE_BURN_A = 1;       // a 1N4007 is rated 1 A
-export const NPN_BURN_A = 0.8;       // a 2N2222 is rated about 0.8 A
+export const NPN_BURN_A = 0.8;       // a 2N2222 is rated about 0.8 A collector current
+export const NPN_BASE_BURN_A = 0.1;  // and takes about 0.1 A into the base
 export const NPN_BETA = 100;
 export const VCE_SAT = 0.2;
 export const RESISTOR_MAX_W = 0.25;  // quarter watt resistors, as in starter kits
@@ -25,6 +26,7 @@ const BATTERY_R = 0.5;
 const GEN_R = 0.1;
 const CAP_STATIC_G = 1e4;            // without a time step a capacitor holds its voltage like a tiny battery
 const GMIN = 1e-9;
+const GMIN_DIODE = 1e-12;            // a reversed diode leaks even less than an idle LED
 
 const DEFAULTS = {
   battery: () => ({ v: 9 }),
@@ -63,7 +65,7 @@ export function usedHoles(c) {
 // Output voltage of a generator at time t.
 export function genVoltage(props, t) {
   const ph = (((t * props.f) % 1) + 1) % 1;
-  if (props.wave === 'sine') return props.v / 2 * (1 + Math.sin(2 * Math.PI * ph));
+  if (props.wave === 'sine') return props.v * Math.sin(2 * Math.PI * ph);   // alternating, peak = v
   return ph < 0.5 ? props.v : 0;
 }
 
@@ -91,8 +93,8 @@ function solveOnce(circuit, dt) {
       const g = dt > 0 ? c.props.c / dt : CAP_STATIC_G;
       add(n[0], n[1], g, g * (c.vc || 0), { cap: true });
     }
-    else if (c.type === 'led') { if (!c.burned) add(n[0], n[1], 0, 0, { diode: true, on: true, vf: c.props.vf, rs: LED_RS }); }
-    else if (c.type === 'diode') { if (!c.burned) add(n[0], n[1], 0, 0, { diode: true, on: false, vf: c.props.vf ?? DIODE_VF, rs: DIODE_RS }); }
+    else if (c.type === 'led') { if (!c.burned) add(n[0], n[1], 0, 0, { diode: true, on: true, vf: c.props.vf, rs: LED_RS, goff: GMIN }); }
+    else if (c.type === 'diode') { if (!c.burned) add(n[0], n[1], 0, 0, { diode: true, on: false, vf: c.props.vf ?? DIODE_VF, rs: DIODE_RS, goff: GMIN_DIODE }); }
     else if (c.type === 'npn') { if (!c.burned) trans.push({ c, b: n[0], k: n[1], e: n[2], st: 'off', beta: c.props.beta ?? NPN_BETA }); }
     else if (c.type === 'pot') {
       add(n[0], n[1], 1 / Math.max(c.props.r * c.props.pos, 1), 0, { part: 0 });
@@ -108,7 +110,7 @@ function solveOnce(circuit, dt) {
     for (let k = 0; k < N; k++) A[k][k] = GMIN;
     const stamp = (a, c, g, is) => { A[a][a] += g; A[c][c] += g; A[a][c] -= g; A[c][a] -= g; b[a] += is; b[c] -= is; };
     for (const e of els) {
-      if (e.diode) { e.g = e.on ? 1 / e.rs : GMIN; e.is = e.on ? e.vf / e.rs : 0; }
+      if (e.diode) { e.g = e.on ? 1 / e.rs : e.goff; e.is = e.on ? e.vf / e.rs : 0; }
       stamp(e.a, e.b, e.g, e.is);
     }
     for (const q of trans) {
@@ -199,9 +201,10 @@ export function simulate(circuit, dt = 0) {
   let res;
   for (let guard = 0; guard < 10; guard++) {
     res = solveOnce(circuit, dt);
-    const burnt = circuit.comps.filter(c => BURN_A[c.type] && !c.burned && Math.abs(res.comps[c.id].i) > BURN_A[c.type]);
+    const stress = c => { const r = res.comps[c.id]; return c.type === 'npn' ? Math.max(Math.abs(r.i), Math.abs(r.ib) * NPN_BURN_A / NPN_BASE_BURN_A) : Math.abs(r.i); };
+    const burnt = circuit.comps.filter(c => BURN_A[c.type] && !c.burned && stress(c) > BURN_A[c.type]);
     if (!burnt.length) break;
-    for (const c of burnt) { c.burned = true; events.push({ type: 'burn', id: c.id, kind: c.type, i: Math.abs(res.comps[c.id].i) }); }
+    for (const c of burnt) { c.burned = true; events.push({ type: 'burn', id: c.id, kind: c.type, i: c.type === 'npn' && Math.abs(res.comps[c.id].ib) * 8 > Math.abs(res.comps[c.id].i) ? Math.abs(res.comps[c.id].ib) : Math.abs(res.comps[c.id].i) }); }
   }
   if (dt > 0) for (const c of circuit.comps) if (c.type === 'capacitor') c.vc = res.capV[c.id];
   res.events = events;
@@ -212,8 +215,9 @@ export function simulate(circuit, dt = 0) {
 export function advance(circuit, seconds, dt = 0.001) {
   let res = null;
   const events = [];
-  const n = Math.max(1, Math.round(seconds / dt));
+  const n = Math.max(1, Math.round(seconds / dt)), t0 = circuit.t || 0;
   for (let k = 0; k < n; k++) { res = simulate(circuit, seconds / n); events.push(...res.events); }
+  circuit.t = t0 + seconds;   // no floating point drift
   res.events = events;
   return res;
 }

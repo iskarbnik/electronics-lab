@@ -1,22 +1,26 @@
 // The lesson player: owns the circuit, the step state machine and the DOM of the lesson screen.
 import { COLS, TERMINALS, VIEW, stripOf, holesOfStrip, holePos, parseHole, nearestHole } from '../sim/board.js';
-import { simulate, usedHoles, getComp, clone, addComp, removeComp, voltageBetween } from '../sim/circuit.js';
+import { simulate, usedHoles, getComp, clone, addComp, removeComp, voltageBetween, isDynamic, restart } from '../sim/circuit.js';
 import { fmt } from '../sim/format.js';
 import { buildCircuit } from '../lessons/engine.js';
 import { t, L, ltr, bidi, getLang, onLang } from '../i18n.js';
 import * as store from '../store.js';
-import { createBoardView, hitComp, compBox, stripBox, focusRect } from './boardView.js';
+import { createBoardView, hitComp, compBox, stripBox, focusRect, THREE_PIN } from './boardView.js';
+import { createScope } from './scope.js';
 import { createSchematicView } from './schematicView.js';
 
 const ICON = {
   back: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   meter: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 12l4-5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg>',
   fit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  restart: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.6-5.9M4 4v4.5h4.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   chev: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   x: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>',
   check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
-const CHIPS = [100, 220, 330, 470, 1000, 2200, 4700, 10000];
+const CHIPS = [100, 220, 330, 470, 1000, 2200, 4700, 10000, 47000, 100000, 220000];
+const CAP_CHIPS = [10e-6, 47e-6, 100e-6, 220e-6, 470e-6, 1000e-6];
+const SUBSTEP = 0.002;
 const cleanV = v => (Math.abs(v) < 5e-4 ? 0 : v);
 const isTerm = h => h === 'BAT+' || h === 'BAT-';
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -38,6 +42,7 @@ export function mountLesson(root, lesson, opts = {}) {
     <header class="lhead">
       <button class="iconbtn back" type="button">${ICON.back}</button>
       <div class="ltitle"><h1></h1><span class="lstep"></span></div>
+      <button class="tbtn restartbtn" type="button" hidden>${ICON.restart}<span></span></button>
       <button class="tbtn meterbtn" type="button" aria-pressed="false">${ICON.meter}<span></span></button>
       <button class="tbtn fitbtn" type="button">${ICON.fit}<span></span></button>
       <div class="pbar" role="progressbar"><i></i></div>
@@ -51,8 +56,9 @@ export function mountLesson(root, lesson, opts = {}) {
         <div class="card" hidden></div>
       </section>
       <section class="pane schempane">
-        <button class="schemtoggle" type="button" aria-expanded="true"><span></span>${ICON.chev}</button>
-        <div class="shost"></div>
+        <div class="ptabs"><div class="tabs" role="tablist"><button class="ptab schemtab" type="button" role="tab"></button><button class="ptab scopetab" type="button" role="tab" hidden></button></div>
+          <button class="schemtoggle" type="button" aria-expanded="true">${ICON.chev}</button></div>
+        <div class="shost"></div><div class="scopehost" hidden></div>
       </section>
     </main>
     <footer class="steppanel">
@@ -63,12 +69,14 @@ export function mountLesson(root, lesson, opts = {}) {
   root.append(rootEl);
   const $ = s => rootEl.querySelector(s);
   const E = {
-    back: $('.back'), title: $('.ltitle h1'), stepLbl: $('.lstep'), meterBtn: $('.meterbtn'), fitBtn: $('.fitbtn'), bar: $('.pbar'),
+    back: $('.back'), title: $('.ltitle h1'), stepLbl: $('.lstep'), meterBtn: $('.meterbtn'), restartBtn: $('.restartbtn'), fitBtn: $('.fitbtn'), schemTab: $('.schemtab'), scopeTab: $('.scopetab'), scopeHost: $('.scopehost'), bar: $('.pbar'),
     bhost: $('.bhost'), meterBox: $('.meterbox'), banner: $('.banner'), toast: $('.toast'), card: $('.card'),
     schemPane: $('.schempane'), schemToggle: $('.schemtoggle'), shost: $('.shost'),
     text: $('.steptext'), quiz: $('.quiz'), hint: $('.hint'), bk: $('.bk'), nx: $('.nx'), complete: $('.complete'),
   };
-  if (!lesson.schematic) { E.schemPane.hidden = true; rootEl.classList.add('noschem'); }
+  if (!lesson.schematic && !lesson.scope) { E.schemPane.hidden = true; rootEl.classList.add('noschem'); }
+  let tab = lesson.schematic ? 'schem' : 'scope';
+  const scope = lesson.scope ? createScope(E.scopeHost, lesson.scope) : null;
   const board = createBoardView(E.bhost, { onTap, onPress });
   const schem = lesson.schematic ? createSchematicView(E.shost, lesson.schematic, { onSelect: id => selectComp(id) }) : null;
 
@@ -77,7 +85,7 @@ export function mountLesson(root, lesson, opts = {}) {
   const snapshots = {};
   const passed = new Set();
   let ui, selection, pending, probes, meterOn, done, quizState, hintOv, cardOpen = true, complete = false;
-  let advanceTimer = 0, toastTimer = 0, cardKey = '', cardRefs = null, lastFocus = null;
+  let advanceTimer = 0, toastTimer = 0, cardKey = '', cardRefs = null, lastFocus = null, raf = 0, lastTs = 0;
   const cur = () => steps[stepIdx];
   const newUi = () => ({ pressed: new Set(), selected: new Set(), tapped: new Set() });
 
@@ -90,10 +98,13 @@ export function mountLesson(root, lesson, opts = {}) {
     if (!snapshots[i]) snapshots[i] = buildCircuit(lesson, i);
     circuit = clone(snapshots[i]);
     const s = cur();
+    if (s.fresh) restart(circuit);
     meterOn = s.type === 'measure';
     if (passed.has(i) && (s.type === 'quiz' || s.type === 'explore')) { done = true; if (s.type === 'quiz') quizState = { picked: s.answer, right: true, wrong: false }; }
     store.setStep(lesson.id, i);
     sim = simulate(circuit);
+    scope?.clear();
+    if (s.view === 'scope' && scope) tab = 'scope'; else if (s.view === 'schem' && lesson.schematic) tab = 'schem';
     evalDone();
     focusStep();
     renderAll();
@@ -103,7 +114,7 @@ export function mountLesson(root, lesson, opts = {}) {
     const s = cur(), boxes = [];
     const railPt = (strip, otherPin) => { const c = otherPin && parseHole(otherPin)?.col || 1; const p = holePos(strip + c) || holePos(strip + 1); return { x: p.x - 10, y: p.y - 10, w: 20, h: 20 }; };
     const stripFor = (strip, otherPin) => (/^[pq]/.test(strip) ? railPt(strip, otherPin) : stripBox(strip));
-    if (s.type === 'wire' || (s.type === 'place' && s.kind !== 'pot')) {
+    if (s.type === 'wire' || (s.type === 'place' && !THREE_PIN.has(s.kind))) {
       s.pins.forEach((p, k) => boxes.push(stripFor(stripOf(p), s.pins[1 - k])));
     } else if (s.type === 'place') {
       const a = holePos(s.pins[0]), b = holePos(s.pins[2]);
@@ -137,11 +148,39 @@ export function mountLesson(root, lesson, opts = {}) {
   }
   const stepDone = () => cur().type === 'info' || done;
 
+  const burnToast = ev => toast(t('toast.burn.' + (ev.kind || 'led'), { i: ltr(fmt(ev.i, 'A')) }));
   function recalc() {
     sim = simulate(circuit);
-    for (const ev of sim.events) toast(t('toast.burn', { i: ltr(fmt(ev.i, 'A')) }));
+    for (const ev of sim.events) burnToast(ev);
     evalDone();
     renderAll();
+  }
+
+  // Real-time simulation: runs only while the circuit has a capacitor or a generator.
+  function sample() { scope?.push(circuit.t, ch => voltageBetween(sim, ch.hole, ch.ref || 'BAT-')); }
+  function advanceTime(dt) {
+    const n = Math.max(1, Math.ceil(dt / SUBSTEP)), hstep = dt / n;
+    for (let k = 0; k < n; k++) {
+      sim = simulate(circuit, hstep);
+      for (const ev of sim.events) burnToast(ev);
+      sample();
+    }
+    const was = done;
+    evalDone();
+    if (done !== was) renderPanel();
+    renderMeter(); renderBanner(); renderCard(); renderBoard(); renderSchem(); renderScope();
+  }
+  function frame(ts) {
+    raf = requestAnimationFrame(frame);
+    if (complete || document.hidden || !isDynamic(circuit)) { lastTs = 0; return; }
+    if (!lastTs) { lastTs = ts; return; }
+    const dt = Math.min(0.05, (ts - lastTs) / 1000);
+    lastTs = ts;
+    if (dt > 0) advanceTime(dt);
+  }
+  function restartTime() {
+    restart(circuit); sim = simulate(circuit); scope?.clear();
+    evalDone(); renderAll();
   }
 
   function toast(html) {
@@ -216,11 +255,11 @@ export function mountLesson(root, lesson, opts = {}) {
     const s = cur(), strips = s.pins.map(stripOf), used = usedHoles(circuit), strip = stripOf(hole);
     if (pending && hole === pending.hole) { pending = null; hintOv = null; return renderAll(); }
     if (!isTerm(hole) && used.has(hole)) return setHint('hint.occupied');
-    if (s.type === 'place' && s.kind === 'pot') {
+    if (s.type === 'place' && THREE_PIN.has(s.kind)) {
       if (strip !== strips[0]) return setHint('hint.wrongStrip');
       const p = parseHole(hole);
       const hs = [0, 1, 2].map(k => p.row + (p.col + k));
-      if (p.col + 2 > COLS || hs.some(x => used.has(x))) return setHint('hint.potSpace');
+      if (p.col + 2 > COLS || hs.some(x => used.has(x))) return setHint('hint.threeSpace');
       return commit(hs);
     }
     if (!pending) {
@@ -254,12 +293,12 @@ export function mountLesson(root, lesson, opts = {}) {
     const pick = (strip, canon) => (canon && stripOf(canon) === strip && free(canon) ? canon : holesOfStrip(strip).find(free) || null);
     if ((s.type === 'wire' || s.type === 'place') && !done) {
       const strips = s.pins.map(stripOf);
-      const idxs = s.kind === 'pot' ? [0] : pending ? [1 - pending.idx] : [0, 1];
+      const idxs = THREE_PIN.has(s.kind) ? [0] : pending ? [1 - pending.idx] : [0, 1];
       for (const k of idxs) {
         if (strips[k] !== undefined && !g.rings.some(r => r.strip === strips[k])) g.rings.push({ strip: strips[k], kind: 'target' });
       }
       g.pulse = pick(strips[idxs[0]], s.pins[idxs[0]]);
-      if (s.kind === 'pot') { const p = s.pins[0]; g.pulse = free(p) ? p : g.pulse; }
+      if (THREE_PIN.has(s.kind)) { const p = s.pins[0]; g.pulse = free(p) ? p : g.pulse; }
     } else if (s.type === 'measure' && !done) {
       const rs = stripOf(s.red), bs = stripOf(s.black);
       const onRed = probes.red && stripOf(probes.red) === rs;
@@ -273,7 +312,8 @@ export function mountLesson(root, lesson, opts = {}) {
   function renderBoard() {
     board.update({ circuit, sim, selected: selection, tapped: [...ui.tapped], guides: guides(), probes: meterOn || cur().type === 'measure' ? probes : null });
   }
-  function renderSchem() { schem?.update({ circuit, sim, selected: selection, plan }); }
+  function renderSchem() { if (tab === 'schem') schem?.update({ circuit, sim, selected: selection, plan }); }
+  function renderScope() { if (tab === 'scope') scope?.draw(circuit.t); }
 
   function renderHeader() {
     E.back.setAttribute('aria-label', t('lesson.homeAria'));
@@ -282,10 +322,16 @@ export function mountLesson(root, lesson, opts = {}) {
     E.meterBtn.querySelector('span').textContent = t('lesson.meter');
     E.meterBtn.setAttribute('aria-pressed', String(meterOn));
     E.fitBtn.querySelector('span').textContent = t('lesson.fit');
+    E.restartBtn.querySelector('span').textContent = t('lesson.restart');
+    E.restartBtn.setAttribute('aria-label', t('lesson.restartAria'));
+    E.restartBtn.hidden = !isDynamic(circuit);
     E.fitBtn.setAttribute('aria-label', t('lesson.fitAria'));
     E.bar.firstElementChild.style.width = ((stepIdx + 1) / steps.length * 100) + '%';
     E.bar.setAttribute('aria-valuenow', stepIdx + 1); E.bar.setAttribute('aria-valuemax', steps.length);
-    E.schemToggle.firstElementChild.textContent = t('schem.title');
+    E.schemTab.textContent = t('schem.title'); E.schemTab.hidden = !lesson.schematic;
+    E.scopeTab.textContent = t('scope.title'); E.scopeTab.hidden = !scope;
+    for (const [b, k] of [[E.schemTab, 'schem'], [E.scopeTab, 'scope']]) { b.setAttribute('aria-selected', String(tab === k)); b.classList.toggle('on', tab === k); }
+    E.shost.hidden = tab !== 'schem'; E.scopeHost.hidden = tab !== 'scope';
     E.schemToggle.setAttribute('aria-label', t('schem.toggle'));
   }
 
@@ -344,6 +390,8 @@ export function mountLesson(root, lesson, opts = {}) {
     if (c.type === 'resistor') return fmt(c.props.r, 'Ω');
     if (c.type === 'battery') return fmt(c.props.v, 'V');
     if (c.type === 'pot') return fmt(c.props.r, 'Ω');
+    if (c.type === 'capacitor') return fmt(c.props.c, 'F');
+    if (c.type === 'gen') return `${fmt(c.props.v, 'V')} ${fmt(c.props.f, 'Hz')}`;
     return '';
   }
   function renderCard() {
@@ -361,8 +409,14 @@ export function mountLesson(root, lesson, opts = {}) {
     if (c.type === 'resistor' && st.hot) { status = t('card.hot'); bad = true; }
     else if (c.type === 'led') { status = c.burned ? t('card.burned') : st.lit ? t('card.lit') : t('card.off'); bad = c.burned; }
     else if (c.type === 'button') status = c.props.pressed ? t('card.pressed') : t('card.released');
+    else if (c.type === 'diode') { status = c.burned ? t('card.burned') : st.conducting ? t('card.conducting') : t('card.blocking'); bad = c.burned; }
+    else if (c.type === 'capacitor') status = t('card.stored', { e: ltr(fmt(st.energy || 0, 'J')) });
+    else if (c.type === 'npn') {
+      status = c.burned ? t('card.burned') : t('card.npn.' + (st.state || 'off'), { ib: ltr(fmt(st.ib || 0, 'A')), vbe: ltr(fmt(st.vbe || 0, 'V')) });
+      bad = c.burned;
+    }
     R.status.innerHTML = bidi(status); R.status.className = 'cstatus' + (bad ? ' bad' : '') + (status ? '' : ' empty');
-    if (R.chips) R.chips.forEach(([b, v]) => b.classList.toggle('on', c.props.r === v));
+    if (R.chips) R.chips.forEach(([b, v]) => b.classList.toggle('on', (c.type === 'capacitor' ? c.props.c : c.props.r) === v));
     if (R.slider) {
       if (document.activeElement !== R.slider) R.slider.value = c.props.pos;
       R.sliderVal.textContent = fmt(c.props.r * c.props.pos, 'Ω');
@@ -371,7 +425,7 @@ export function mountLesson(root, lesson, opts = {}) {
   function buildCard(c, flags) {
     E.card.innerHTML = '';
     const head = h('div', 'chead');
-    const val = c.type === 'led' ? '' : valueOf(c);
+    const val = c.type === 'led' || c.type === 'diode' || c.type === 'npn' ? '' : valueOf(c);
     head.innerHTML = `<span class="cname"><b>${t('part.' + c.type)}</b> <span class="cid">${esc(c.id)}</span>${val ? ` <bdi dir="ltr" class="cval">${val}</bdi>` : ''}</span>`;
     const x = h('button', 'iconbtn sm', ICON.x); x.type = 'button'; x.setAttribute('aria-label', t('card.close'));
     x.addEventListener('click', () => { cardOpen = false; renderCard(); });
@@ -391,6 +445,16 @@ export function mountLesson(root, lesson, opts = {}) {
       }
       ctl.append(row);
     }
+    if (c.type === 'capacitor') {
+      cardRefs.chips = [];
+      const row = h('div', 'chips');
+      for (const v of CAP_CHIPS) {
+        const b = h('button', 'chip'); b.type = 'button'; b.textContent = fmt(v, 'F'); b.dir = 'ltr'; b.disabled = !flags.set;
+        b.addEventListener('click', () => { const cc = getComp(circuit, c.id); if (cc) { cc.props.c = v; recalc(); } });
+        row.append(b); cardRefs.chips.push([b, v]);
+      }
+      ctl.append(row);
+    }
     if (c.type === 'pot') {
       const wrap = h('label', 'slider', `<span>${bidi(t('card.slider'))} <bdi dir="ltr" class="num sv"></bdi></span>`);
       const inp = document.createElement('input');
@@ -401,7 +465,7 @@ export function mountLesson(root, lesson, opts = {}) {
     }
     const row2 = h('div', 'btnrow');
     const mkBtn = (label, enabled, fn, cls = '') => { const b = h('button', 'btn small ' + cls, label); b.type = 'button'; b.disabled = !enabled; b.addEventListener('click', fn); row2.append(b); };
-    if (c.type === 'led') mkBtn(t('card.flip'), flags.flip, () => { const cc = getComp(circuit, c.id); if (cc) { cc.pins = [cc.pins[1], cc.pins[0]]; recalc(); } });
+    if (c.type === 'led' || c.type === 'diode') mkBtn(t('card.flip'), flags.flip, () => { const cc = getComp(circuit, c.id); if (cc) { cc.pins = [cc.pins[1], cc.pins[0]]; recalc(); } });
     if (c.burned) mkBtn(t('card.replace'), true, () => { const cc = getComp(circuit, c.id); if (cc) { cc.burned = false; recalc(); } }, 'primary');
     if (c.type !== 'battery' && c.type !== 'wire' || flags.remove) mkBtn(t('card.remove'), flags.remove, () => { removeComp(circuit, c.id); selection = null; recalc(); }, 'danger');
     if (row2.children.length) ctl.append(row2);
@@ -420,7 +484,7 @@ export function mountLesson(root, lesson, opts = {}) {
   }
 
   function renderAll() {
-    renderHeader(); renderPanel(); renderMeter(); renderBanner(); renderCard(); renderBoard(); renderSchem(); renderComplete();
+    renderHeader(); renderPanel(); renderMeter(); renderBanner(); renderCard(); renderBoard(); renderSchem(); renderScope(); renderComplete();
   }
 
   // ---------- wiring ----------
@@ -428,6 +492,9 @@ export function mountLesson(root, lesson, opts = {}) {
   E.bk.addEventListener('click', back);
   E.nx.addEventListener('click', next);
   E.fitBtn.addEventListener('click', () => board.fit());
+  E.restartBtn.addEventListener('click', restartTime);
+  E.schemTab.addEventListener('click', () => { tab = 'schem'; renderAll(); });
+  E.scopeTab.addEventListener('click', () => { tab = 'scope'; renderAll(); });
   E.meterBtn.addEventListener('click', () => { meterOn = !meterOn; if (!meterOn) probes = { red: null, black: null }; renderAll(); });
   E.schemToggle.addEventListener('click', () => {
     const c = rootEl.classList.toggle('schemclosed');
@@ -437,10 +504,11 @@ export function mountLesson(root, lesson, opts = {}) {
 
   const startStep = store.isDone(lesson.id) ? 0 : Math.min(store.getStep(lesson.id), steps.length - 1);
   enter(startStep);
+  raf = requestAnimationFrame(frame);
 
   return {
-    destroy() { clearTimeout(advanceTimer); clearTimeout(toastTimer); off(); board.destroy(); schem?.destroy(); rootEl.remove(); },
+    destroy() { cancelAnimationFrame(raf); clearTimeout(advanceTimer); clearTimeout(toastTimer); off(); board.destroy(); schem?.destroy(); rootEl.remove(); },
     // for tests and automation
-    debug: { get step() { return stepIdx; }, get circuit() { return circuit; }, get sim() { return sim; } },
+    debug: { get step() { return stepIdx; }, get circuit() { return circuit; }, get sim() { return sim; }, get tab() { return tab; }, advance: seconds => advanceTime(seconds) },
   };
 }

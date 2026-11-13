@@ -1,5 +1,5 @@
 // Helpers shared by all lesson files.
-import { getComp, removeComp } from '../sim/circuit.js';
+import { getComp, removeComp, advance, restart } from '../sim/circuit.js';
 
 export const T = (he, en) => ({ he, en });
 export const SETUP = T('הכנה', 'Setup');
@@ -24,7 +24,7 @@ export const press = (comp, text, extra) =>
 
 export const flip = (comp, wantLit, text, extra) => doStep(comp, 'flip', text,
   c => { const x = getComp(c, comp); if (x) x.pins = [x.pins[1], x.pins[0]]; },
-  sim => !!sim.comps[comp] && !!sim.comps[comp].lit === !!wantLit, extra);
+  sim => !!sim.comps[comp] && !!(sim.comps[comp].lit ?? sim.comps[comp].conducting) === !!wantLit, extra);
 
 export const remove = (comp, text, extra) =>
   doStep(comp, 'remove', text, c => removeComp(c, comp), (sim, c) => !getComp(c, comp), extra);
@@ -75,3 +75,12 @@ export const loopSchematic = () => ({
   ],
   dots: [],
 });
+
+// Capacitor value chosen from the card.
+export const setC = (comp, farads, text, extra) => doStep(comp, 'set', text,
+  c => { const x = getComp(c, comp); if (x) x.props.c = farads; },
+  (sim, c) => { const x = getComp(c, comp); return !!x && x.props.c === farads; }, extra);
+
+// Let simulated time run. `until(sim, circuit)` says when the step is satisfied; `seconds` is what the tests fast-forward.
+export const wait = (comp, seconds, until, text, extra) => doStep(comp, 'wait', text,
+  c => { advance(c, seconds, 0.001); }, until, extra);

@@ -9,11 +9,12 @@ function valueText(type, comp, plan) {
   if (type === 'battery') return fmt(p.v ?? 9, 'V');
   if (type === 'resistor') return fmt(p.r ?? 470, 'Ω');
   if (type === 'pot') return fmt(p.r ?? 10000, 'Ω');
+  if (type === 'capacitor') return fmt(p.c ?? 100e-6, 'F');
   return '';
 }
 
 // Symbols in local coordinates: pin0 at (-40, 0), pin1 at (40, 0).
-function symbol(part, comp, plan, sim) {
+export function symbol(part, comp, plan, sim) {
   const g = el('g', { class: 'sym' });
   const line = (d, cls = '') => g.append(el('path', { d, class: 'wirep ' + cls }));
   const t = part.type;
@@ -37,6 +38,32 @@ function symbol(part, comp, plan, sim) {
     line('M-40 0H-14'); line('M14 0H40');
     g.append(el('circle', { cx: -14, cy: 0, r: 3, class: 'contact' }), el('circle', { cx: 14, cy: 0, r: 3, class: 'contact' }));
     g.append(el('path', { d: pr ? 'M-14 0H14' : 'M-14 -2L12 -16', class: 'wirep bridge' + (pr ? ' on' : '') }));
+  } else if (t === 'capacitor') {
+    const s = sim?.comps[part.id], v = s?.v || 0;
+    line('M-40 0H-5'); line('M5 0H40');
+    g.append(el('path', { d: 'M-5 -16V16', class: 'plate long' }), el('path', { d: 'M5 -16V16', class: 'plate long' }));
+    if (Math.abs(v) > 0.05) g.append(el('rect', { x: -4, y: -15, width: 8, height: 30, class: 'capfill', opacity: Math.min(0.7, Math.abs(v) / 9 * 0.7) }));
+    g.append(el('text', { x: -16, y: -10, text: '+', class: 'sch-plus', 'text-anchor': 'middle' }));
+  } else if (t === 'diode') {
+    const on = !!sim?.comps[part.id]?.conducting;
+    line('M-40 0H-10'); line('M10 0H40');
+    g.append(el('path', { d: 'M-10 -12V12L10 0Z', class: 'ledtri', fill: on ? '#ffb224' : 'none', 'fill-opacity': on ? 0.5 : 0, stroke: 'currentColor' }));
+    g.append(el('path', { d: 'M10 -12V12', class: 'plate' }));
+    if (comp?.burned) g.append(el('path', { d: 'M-8 -8L8 8M8 -8L-8 8', class: 'burnx' }));
+  } else if (t === 'npn') {
+    // terminals: base (-40, 0), collector (20, -40), emitter (20, 40)
+    const st = sim?.comps[part.id]?.state;
+    g.append(el('circle', { cx: 4, cy: 0, r: 27, class: 'npncircle' + (st === 'active' || st === 'sat' ? ' on' : '') }));
+    line('M-40 0H-6'); line('M20 -40V-22L-6 -8'); line('M-6 8L20 22V40');
+    g.append(el('path', { d: 'M-6 -16V16', class: 'plate long' }));
+    g.append(el('path', { d: 'M8 16.5L20 22L13 12Z', class: 'arrowhead' }));
+    for (const [x, y, ch] of [[-44, 12, 'B'], [26, -34, 'C'], [26, 40, 'E']]) g.append(el('text', { x, y, text: ch, class: 'pinlab', 'text-anchor': 'middle' }));
+  } else if (t === 'gen') {
+    const sine = (comp?.props.wave ?? plan?.props?.wave) === 'sine';
+    line('M-40 0H-18'); line('M18 0H40');
+    g.append(el('circle', { cx: 0, cy: 0, r: 18, class: 'gencircle' }));
+    g.append(el('path', { d: sine ? 'M-11 0q5.5 -12 11 0t11 0' : 'M-11 6V-6H0V6H11V-6', class: 'genwave' }));
+    g.append(el('text', { x: -28, y: -8, text: '+', class: 'sch-plus', 'text-anchor': 'middle' }));
   } else if (t === 'pot') {
     line('M-40 0H-24 L-20 -8 L-12 8 L-4 -8 L4 8 L12 -8 L20 8 L24 0 H40', 'zig');
     const pos = comp?.props.pos ?? 0.5;
@@ -58,7 +85,7 @@ export function createSchematicView(host, schematic, cb = {}) {
 
   // viewBox from the drawing
   const xs = [], ys = [];
-  for (const p of schematic.parts) { const h = p.rot === 90 ? [0, 2] : [2, 0]; xs.push((p.x - h[0]) * U, (p.x + h[0]) * U); ys.push((p.y - h[1]) * U, (p.y + h[1]) * U); if (p.type === 'pot') ys.push((p.y - 2) * U); }
+  for (const p of schematic.parts) { const h = p.rot === 90 ? [0, 2] : [2, 0]; xs.push((p.x - h[0]) * U, (p.x + h[0]) * U); ys.push((p.y - h[1]) * U, (p.y + h[1]) * U); if (p.type === 'pot') ys.push((p.y - 2) * U); if (p.type === 'npn') ys.push((p.y - 2) * U, (p.y + 2) * U); }
   for (const w of schematic.wires) for (const [x, y] of w.pts) { xs.push(x * U); ys.push(y * U); }
   const pad = 48;
   const x0 = Math.min(...xs) - pad, x1 = Math.max(...xs) + pad + 56, y0 = Math.min(...ys) - pad, y1 = Math.max(...ys) + pad;
@@ -76,20 +103,22 @@ export function createSchematicView(host, schematic, cb = {}) {
       const ghost = !comp;
       const s = comp ? sim?.comps[comp.id] : null;
       const g = el('g', { class: 'spart' + (ghost ? ' ghost' : '') + (m.selected === part.id ? ' sel' : ''), transform: `translate(${part.x * U} ${part.y * U}) rotate(${part.rot || 0})` });
-      if (m.selected === part.id) g.append(el('rect', { x: -48, y: part.type === 'pot' ? -46 : -24, width: 96, height: part.type === 'pot' ? 70 : 48, rx: 10, class: 'selbox' }));
+      const tall = part.type === 'npn';
+      if (m.selected === part.id) g.append(el('rect', { x: -48, y: part.type === 'pot' ? -46 : tall ? -46 : -24, width: 96, height: part.type === 'pot' ? 70 : tall ? 92 : 48, rx: 10, class: 'selbox' }));
       g.append(symbol({ ...part }, comp, plan, sim));
-      const hit = el('rect', { x: -44, y: part.type === 'pot' ? -44 : -26, width: 88, height: part.type === 'pot' ? 68 : 52, fill: 'transparent', class: 'hit' });
+      const hit = el('rect', { x: -44, y: part.type === 'pot' ? -44 : tall ? -44 : -26, width: 88, height: part.type === 'pot' ? 68 : tall ? 88 : 52, fill: 'transparent', class: 'hit' });
       g.append(hit);
       gParts.append(g);
       if (!ghost) hit.addEventListener('click', () => cb.onSelect?.(part.id));
       // labels, unrotated
       const rot90 = part.rot === 90;
-      const lx = part.x * U + (rot90 ? 28 : 0), anchor = rot90 ? 'start' : 'middle';
-      const ly = part.y * U + (rot90 ? -2 : part.type === 'pot' ? 28 : -22);
+      const lx = part.x * U + (rot90 ? 28 : part.type === 'npn' ? -26 : 0), anchor = rot90 ? 'start' : 'middle';
+      const isN = part.type === 'npn';
+      const ly = part.y * U + (rot90 ? -2 : part.type === 'pot' ? 28 : isN ? -30 : -22);
       const lab = el('g', { class: 'slabel' + (ghost ? ' ghost' : '') });
       const val = valueText(part.type, comp, plan);
       lab.append(el('text', { x: lx, y: ly, 'text-anchor': anchor, class: 'sid' }, [el('tspan', { text: part.id }), val ? el('tspan', { text: '  ' + val, class: 'sval' }) : null]));
-      if (s && Math.abs(s.i) > 50e-6 && !ghost) lab.append(el('text', { x: lx, y: ly + (rot90 ? 16 : (part.type === 'pot' ? 16 : 40)), 'text-anchor': anchor, class: 'scur', text: fmt(Math.abs(s.i), 'A') }));
+      if (s && Math.abs(s.i) > 50e-6 && !ghost) lab.append(el('text', { x: lx, y: ly + (rot90 ? 16 : (part.type === 'pot' || isN ? 16 : 40)), 'text-anchor': anchor, class: 'scur', text: fmt(Math.abs(s.i), 'A') }));
       gParts.append(lab);
     }
     const items = [];

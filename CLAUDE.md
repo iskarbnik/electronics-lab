@@ -5,6 +5,7 @@ Bilingual (Hebrew RTL + English) installable PWA that teaches electronics on a l
 ## Architecture
 - `js/sim/`: simulator. `board.js` geometry and strips, `circuit.js` components and `simulate()`, `solver.js`, `format.js` (`fmt`, resistor `bands`).
 - `js/lessons/`: `index.js` exports `LESSONS`; `l01..l10-*.js` one file per lesson; `common.js` step constructors; `engine.js` `applyStep` / `buildCircuit`.
+- `js/sim/calc.js`: calculator maths. Time: `simulate(circuit, dt)` steps capacitors (backward Euler) and advances `circuit.t`; `advance`, `restart`. New parts: `capacitor` (props.c, state `vc`), `diode`, `npn` (pins `[B, C, E]`, 3 holes in a row like the pot), `gen` (square 0..v or sine +-v). Steps may set `fresh` (restart the clock on entry) and `view: 'scope'`; lessons may have `scope: {span, vmin, vmax, ch}`; `wait()` and `setC()` in `common.js`.
 - `js/ui/`: `lessonPlayer.js` (the lesson screen, exposes `window.__elab.player.debug`), `boardView.js`, `schematicView.js`, `svg.js`.
 - `js/app.js` router and home screen, `js/i18n.js` strings (`t`, `L`, `ltr`, `bidi`), `js/store.js` progress in localStorage, `sw.js` service worker.
 - Lesson: `{ id, title, summary, schematic, setup:[step], steps:[step] }`. All text is `{ he, en }` and may hold simple HTML. Step types: info, explore, wire, place, measure, do (select/flip/remove/replace/set/press/turn, with `auto` and `until`), quiz. Any step may have `expect(sim, circuit)`, checked by tests.
@@ -27,7 +28,7 @@ Bilingual (Hebrew RTL + English) installable PWA that teaches electronics on a l
 
 ## Phase plan
 1. Foundation: simulator, lesson engine, 10 lessons, PWA, i18n (done).
-2. Capacitors, diodes, transistors, time-domain circuits, oscilloscope, calculators, parts encyclopedia.
+2. Capacitors, diodes, transistors, time-domain circuits, oscilloscope, calculators, parts encyclopedia (done: lessons l11-l16, `js/ui/scope.js`, `js/ui/tools.js`, `js/ui/parts.js`).
 3. Logic gates.
 4. Arduino Uno with an in-app interpreter for a subset of Arduino code.
 5. Sandbox, challenges, quizzes, badges, AI tutor.

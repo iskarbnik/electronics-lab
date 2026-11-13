@@ -2,16 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LESSONS } from '../js/lessons/index.js';
 import { applyStep, buildCircuit } from '../js/lessons/engine.js';
-import { newCircuit, simulate } from '../js/sim/circuit.js';
+import { newCircuit, simulate, restart } from '../js/sim/circuit.js';
 import { holePos } from '../js/sim/board.js';
 
 const isT = t => t && typeof t.he === 'string' && t.he.trim() && typeof t.en === 'string' && t.en.trim();
 const holesOf = step => (step.pins || []);
 
-test('lesson ids are unique and there are ten', () => {
+test('lesson ids are unique and there are at least ten', () => {
   const ids = LESSONS.map(l => l.id);
   assert.equal(new Set(ids).size, ids.length);
-  assert.equal(ids.length, 10);
+  assert.ok(ids.length >= 10);
 });
 
 for (const lesson of LESSONS) {
@@ -69,6 +69,7 @@ for (const lesson of LESSONS) {
     lesson.steps.forEach((s, i) => {
       if (s.type !== 'do' || s.act === 'press' || s.act === 'select') return;
       const c = buildCircuit(lesson, i);
+      if (s.fresh) restart(c);   // the player does this on entering the step
       const sim = simulate(c);
       assert.ok(!s.until(sim, c, { pressed: new Set(), selected: new Set() }), `step ${i} is already satisfied at start`);
     });

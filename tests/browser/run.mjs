@@ -67,13 +67,13 @@ async function playLesson(cfg, lesson) {
     if (!c) throw new Error('component not on board: ' + id);
     if (c.type === 'battery') return [BATTERY.x + BATTERY.w / 2, BATTERY.y + BATTERY.h / 2];
     const ps = c.pins.map(pt);
-    if (c.type === 'pot') return [ps[1][0], ps[1][1] - 30];
+    if (c.type === 'pot' || c.type === 'npn') return [ps[1][0], ps[1][1] - 30];
     return [(ps[0][0] + ps[ps.length - 1][0]) / 2, (ps[0][1] + ps[ps.length - 1][1]) / 2];
   };
   const state = () => page.evaluate(() => ({ step: __elab.player.debug.step, done: !!document.querySelector('.complete:not([hidden])') && getComputedStyle(document.querySelector('.complete')).display !== 'none', nextOn: !document.querySelector('.nx').disabled }));
   // Hebrew only: every number+unit in visible text must sit inside a bdi, code, svg or dir=ltr element.
   const unwrappedUnits = () => page.evaluate(() => {
-    const re = /(?<![\w.\/])-?\d+(?:[.,]\d+)?(?:\/\d+)?\s?(?:µA|mA|A|µV|mV|V|kΩ|MΩ|Ω|mW|W)(?![A-Za-z0-9µΩ])/;
+    const re = /(?<![\w.\/])-?\d+(?:[.,]\d+)?(?:\/\d+)?\s?(?:µA|mA|A|µV|mV|V|kΩ|MΩ|Ω|mW|W|mF|µF|nF|pF|F|kHz|Hz|mJ|µJ|J|ms|µs|s)(?![A-Za-z0-9µΩ])/;
     const bad = [], w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     for (let n; (n = w.nextNode());) {
       const el = n.parentElement;
@@ -104,11 +104,13 @@ async function playLesson(cfg, lesson) {
         await page.click(`.opt >> nth=${s.answer}`);
       } else if (s.type === 'explore') await tapHole(s.want === 'rail' ? 'p+12' : 'c12');
       else if (s.type === 'wire') { await tapHole(s.pins[0]); await tapHole(s.pins[1]); }
-      else if (s.type === 'place') { if (s.kind === 'pot') await tapHole(s.pins[0]); else { await tapHole(s.pins[0]); await tapHole(s.pins[1]); } }
+      else if (s.type === 'place') { if (s.kind === 'pot' || s.kind === 'npn') await tapHole(s.pins[0]); else { await tapHole(s.pins[0]); await tapHole(s.pins[1]); } }
       else if (s.type === 'measure') { await tapHole(s.red); await tapHole(s.black); }
       else if (s.type === 'do') {
         const q = await toScreen(await compPoint(s.comp));
-        if (s.act === 'press') {
+        if (s.act === 'wait') {
+          // time passes by itself: nothing to tap. Just let the real-time simulation run.
+        } else if (s.act === 'press') {
           let cdp;
           if (cfg.touch) { cdp = await ctx.newCDPSession(page); await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [q] }); }
           else { await page.mouse.move(q.x, q.y); await page.mouse.down(); }
@@ -125,14 +127,22 @@ async function playLesson(cfg, lesson) {
           else if (s.act === 'replace') await page.click(`.card .btn >> text="${tr('card.replace')}"`);
           else if (s.act === 'set') {
             const probe = { comps: [{ id: s.comp, props: {} }] }; s.auto(probe);
-            await page.locator('.card .chip', { hasText: new RegExp(`^${fmt(probe.comps[0].props.r, 'Ω')}$`) }).click();
+            const pr = probe.comps[0].props, label = pr.c !== undefined ? fmt(pr.c, 'F') : fmt(pr.r, 'Ω');
+            await page.locator('.card .chip', { hasText: new RegExp(`^${label}$`) }).click();
           } else if (s.act === 'turn') {
             await page.$eval('.card input[type=range]', (el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }, s.range.value);
           }
         }
       }
       // wait for auto-advance (wire/place) or the Next button
-      for (let i = 0; i < 30; i++) { st = await state(); if (st.step !== k || st.done || st.nextOn) break; await wait(100); }
+      if (lesson.scope && s.view === 'scope') {
+        await wait(700);
+        const tabOn = await page.evaluate(() => __elab.player.debug.tab);
+        if (tabOn !== 'scope') throw new Error(`step ${k}: the scope tab did not open`);
+        if (!(await page.$('.scopesvg .strace'))) throw new Error(`step ${k}: no trace drawn on the scope`);
+      }
+      const patience = s.type === 'do' && s.act === 'wait' ? 200 : 30;
+      for (let i = 0; i < patience; i++) { st = await state(); if (st.step !== k || st.done || st.nextOn) break; await wait(100); }
       if (st.step === k && !st.done) {
         if (!st.nextOn) throw new Error(`step ${k} (${s.type}${s.act ? ' ' + s.act : ''}) never completed`);
         if (k === n - 1) {
@@ -162,6 +172,42 @@ async function playLesson(cfg, lesson) {
   } finally { await ctx.close(); }
 }
 
+
+async function pagesCheck(cfg) {
+  const label = `${cfg.name}/pages`;
+  const ctx = await browser.newContext(cfg.ctx);
+  const page = await ctx.newPage();
+  const problems = [];
+  page.on('console', m => { if (['error', 'warning'].includes(m.type())) problems.push(m.text()); });
+  page.on('pageerror', e => problems.push(e.message));
+  try {
+    await page.goto(BASE); await page.reload(); await page.waitForSelector('.lrow');
+    await page.click('a[href="#/tools"]'); await page.waitForSelector('.tools .card2');
+    const first = await page.$eval('.tools .result .big', e => e.textContent);
+    if (!/19\.1 mA/.test(first)) throw new Error('Ohm calculator gave ' + first);
+    const std = await page.$$eval('.tools .result .big', es => es.map(e => e.textContent));
+    if (!std.some(x => /390 Ω/.test(x))) throw new Error('LED calculator did not give 390 Ω: ' + std);
+    await page.goBack(); await page.waitForSelector('.lrow');
+    await page.click('a[href="#/parts"]'); await page.waitForSelector('.part');
+    const n = await page.$$eval('.part', e => e.length);
+    if (n < 10) throw new Error('expected all parts, got ' + n);
+    await page.fill('.search', cfg.lang === 'he' ? 'קבל' : 'capacitor');
+    if ((await page.$$eval('.part', e => e.length)) !== 1) throw new Error('search did not narrow to one part');
+    if (cfg.lang === 'he') {
+      const bad = await page.evaluate(() => {
+        const re = /(?<![\w.\/])-?\d+(?:[.,]\d+)?\s?(?:µA|mA|A|V|kΩ|Ω|W|µF|F|Hz|s)(?![A-Za-z0-9µΩ])/, out = [], w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        for (let x; (x = w.nextNode());) { const el = x.parentElement; if (!el || el.closest('bdi,code,svg,script,style,[dir=ltr],[hidden]')) continue; const m = re.exec(x.nodeValue); if (m) out.push(m[0]); }
+        return out;
+      });
+      if (bad.length) throw new Error('unwrapped units: ' + bad.join(', '));
+    }
+    if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)) throw new Error('horizontal scroll');
+    if (problems.length) throw new Error(problems.join(' | '));
+    console.log(`  ok   ${label}`);
+  } catch (e) { fail(label, e.message.split('\n')[0]); await shot(page, label); }
+  finally { await ctx.close(); }
+}
+
 async function offlineCheck() {
   const label = 'offline';
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'en-US' });
@@ -185,6 +231,7 @@ async function offlineCheck() {
 for (const cfg of CONFIGS) {
   console.log(cfg.name);
   for (const lesson of LESSONS) await playLesson(cfg, lesson);
+  await pagesCheck(cfg);
 }
 console.log('offline');
 await offlineCheck();

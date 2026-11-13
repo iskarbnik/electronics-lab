@@ -1,0 +1,72 @@
+import { T, info, wire, place, remove, measure, wait, quiz, batterySetup, SETUP } from './common.js';
+
+const bw = (pts, of = 'BAT') => ({ pts, of, dir: 1 });
+
+export default {
+  id: 'l11-capacitor',
+  title: T('קבל: מיכל קטן למטען', 'The capacitor: a small tank for charge'),
+  summary: T('טוענים קבל דרך נגד, מנתקים את הסוללה, והקבל מדליק נורית לבד.', 'Charge a capacitor through a resistor, unplug the battery, and let it light an LED by itself.'),
+  schematic: {
+    parts: [
+      { id: 'BAT', type: 'battery', x: 2, y: 6, rot: 90 },
+      { id: 'R1', type: 'resistor', x: 8, y: 2, rot: 0 },
+      { id: 'C1', type: 'capacitor', x: 14, y: 6, rot: 90 },
+      { id: 'R2', type: 'resistor', x: 20, y: 2, rot: 0 },
+      { id: 'D1', type: 'led', x: 24, y: 6, rot: 90 },
+    ],
+    wires: [
+      bw([[2, 4], [2, 2], [6, 2]]),
+      bw([[10, 2], [14, 2], [14, 4]], 'R1'),
+      bw([[14, 2], [18, 2]], 'R2'),
+      bw([[22, 2], [24, 2], [24, 4]], 'R2'),
+      bw([[24, 8], [24, 10], [14, 10]], 'D1'),
+      bw([[14, 8], [14, 10]], 'C1'),
+      bw([[14, 10], [2, 10], [2, 8]], 'R1'),
+    ],
+    dots: [[14, 2], [14, 10]],
+  },
+  setup: [
+    ...batterySetup(),
+    place('R1', 'resistor', ['c5', 'c9'], { r: 470 }, SETUP),
+    wire('W2', ['a10', 'p-10'], 'black', SETUP),
+  ],
+  steps: [
+    info(T(
+      'קבל הוא רכיב שאוגר מטען חשמלי, קצת כמו מיכל מים קטן. הוא נמדד בפארד (<code>F</code>), ובפועל במיקרו-פארד (<code>µF</code>). הקבל שלנו הוא <code>1000 µF</code>.',
+      'A capacitor stores electric charge, a bit like a small water tank. It is measured in farads (<code>F</code>), in practice in microfarads (<code>µF</code>). Ours is <code>1000 µF</code>.')),
+    place('C1', 'capacitor', ['d9', 'd10'], { c: 1e-3 },
+      T('הציבו את הקבל בין עמודה 9 לעמודה 10. הנגד כבר במקומו.', 'Place the capacitor between column 9 and column 10. The resistor is already in place.')),
+    wire('W1', ['p+5', 'a5'], 'red',
+      T('חברו חוט אדום מפס ה-+ אל עמודה 5. הקבל מתחיל להיטען דרך הנגד.', 'Connect a red wire from the + rail to column 5. The capacitor starts charging through the resistor.'),
+      { expect: s => s.comps.C1.i > 0.015 }),
+    wait('C1', 8, s => s.comps.C1.v > 8.5,
+      T('צפו בקבל מתמלא. הזרם חזק בהתחלה, כי הקבל ריק, ואז הוא דועך. חכו עד שמתח הקבל מגיע ל-9 V בערך.',
+        'Watch the capacitor fill. The current is strong at first because the capacitor is empty, then it fades. Wait until the capacitor voltage reaches about 9 V.')),
+    measure('c9', 'p-3',
+      T('מדדו את מתח הקבל עם רב-מודד: הגשוש האדום בעמודה 9 והשחור בפס ה-- העליון.', 'Measure the capacitor voltage with the multimeter: red probe in column 9, black probe on the top - rail.'),
+      { expect: s => s.comps.C1.v > 8.5 }),
+    remove('W1', T('עכשיו נתק את הסוללה: הסירו את החוט האדום.', 'Now disconnect the battery: remove the red wire.')),
+    measure('c9', 'p-3',
+      T('מדדו שוב. הסוללה כבר לא מחוברת, אבל הקבל עדיין מחזיק את המתח.', 'Measure again. The battery is not connected any more, but the capacitor still holds its voltage.'),
+      { expect: s => s.comps.C1.v > 8.5 }),
+    place('R2', 'resistor', ['e9', 'e12'], { r: 470 },
+      T('נפרוק את הקבל דרך נורית. קודם נגד של 470 Ω בין עמודה 9 לעמודה 12.', 'Let us drain the capacitor through an LED. First a 470 Ω resistor from column 9 to column 12.')),
+    place('D1', 'led', ['d12', 'd13'], { color: 'red' },
+      T('הציבו נורית אדומה: הרגל הארוכה (האנודה, +) בעמודה 12 והקצרה בעמודה 13.', 'Place a red LED: the long leg (anode, +) in column 12 and the short one in column 13.')),
+    wire('W3', ['a13', 'p-13'], 'black',
+      T('חברו חוט שחור מעמודה 13 לפס ה-- העליון. הקבל מתפרק דרך הנורית.', 'Connect a black wire from column 13 to the top - rail. The capacitor drains through the LED.'),
+      { expect: s => s.comps.D1.lit }),
+    wait('C1', 8, s => s.comps.C1.v < 2.3,
+      T('הנורית דולקת בלי סוללה! היא נחלשת לאט, עד שהמתח יורד מתחת למתח הנורית (בערך 2 V) והיא נכבית.',
+        'The LED glows with no battery! It slowly fades until the voltage drops below the LED voltage (about 2 V) and it goes out.')),
+    info(T(
+      'זו כל הסיבה שקבלים נמצאים בכל מקום: הם אוגרים אנרגיה לרגע, מחליקים תנודות מתח, וקובעים זמנים. אנרגיה אצורה: <code>E = ½ · C · V²</code>.',
+      'That is why capacitors are everywhere: they hold energy for a moment, smooth out voltage bumps, and set timing. Stored energy: <code>E = ½ · C · V²</code>.')),
+    quiz(T('קבל מלא לגמרי מחובר לסוללה דרך נגד. איזה זרם זורם?', 'A completely full capacitor is connected to a battery through a resistor. What current flows?'),
+      [T('כמעט אפס', 'Almost none'), T('הזרם המקסימלי', 'The maximum current'), T('זרם שמתחלף', 'A back and forth current')], 0,
+      T('כשהקבל מלא, המתח עליו שווה לסוללה, אין הפרש מתח על הנגד ולכן אין זרם.', 'When the capacitor is full its voltage equals the battery, so there is no voltage across the resistor and no current.')),
+    quiz(T('למה הנורית נחלשת לאט ולא כבית בבת אחת?', 'Why does the LED fade slowly instead of going out at once?'),
+      [T('המתח של הקבל יורד בהדרגה ככל שהוא מתרוקן', 'The capacitor voltage falls gradually as it empties'), T('הנגד מתחמם', 'The resistor heats up'), T('הנורית מתעייפת', 'The LED gets tired')], 0,
+      T('פחות מטען פירושו פחות מתח, פחות מתח פירושו פחות זרם, ופחות זרם פירושו נורית עמומה יותר.', 'Less charge means less voltage, less voltage means less current, and less current means a dimmer LED.')),
+  ],
+};
