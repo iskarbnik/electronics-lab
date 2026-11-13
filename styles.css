@@ -284,3 +284,12 @@ html[dir="rtl"] .iconbtn.sm { margin: -6px 0 -6px -8px; }
 .gatesym.hi { fill: rgba(110, 231, 168, .25); stroke: #6ee7a8; }
 .swire.hi { stroke: #6ee7a8; }
 .swire.lo { stroke: #7d8793; }
+
+/* ---------- diode and capacitor ---------- */
+.diodebody { fill: #1c1f24; stroke: #4b5563; stroke-width: 1; }
+.diodestripe { fill: #c9ced6; }
+.capbody { fill: #1f3b5c; stroke: #3d6aa6; stroke-width: 1.5; }
+.capstripe { fill: #aab6c6; opacity: .35; }
+.capfill { fill: var(--amber); }
+.cappol { fill: #fff; font: 800 12px var(--sans); }
+.captext { fill: #dbe7f7; font: 700 9px var(--mono); }

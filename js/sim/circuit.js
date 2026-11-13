@@ -17,6 +17,7 @@ const WIRE_R = 0.01;
 const BATTERY_R = 0.5;
 const GATE_R = 25;   // output resistance of a gate pin, like a 74HC chip
 const GMIN = 1e-9;
+const HOLD_DT = 1e-6;  // a static solve holds each capacitor at its stored voltage
 
 const DEFAULTS = {
   battery: () => ({ v: 9 }),
@@ -26,6 +27,8 @@ const DEFAULTS = {
   button: () => ({ pressed: false }),
   pot: () => ({ r: 10000, pos: 0.5 }),
   switch: () => ({ on: false }),
+  diode: () => ({ vf: 0.7 }),
+  capacitor: () => ({ c: 0.001, vc: 0 }),
   gate: () => ({ fn: 'and' }),
 };
 
@@ -45,7 +48,7 @@ export function usedHoles(c) {
   return s;
 }
 
-function solveOnce(circuit) {
+function solveOnce(circuit, dt = 0) {
   const nodes = new Map();
   const node = hole => {
     const s = stripOf(hole);
@@ -63,6 +66,8 @@ function solveOnce(circuit) {
     else if (c.type === 'wire') add(n[0], n[1], 1 / WIRE_R);
     else if (c.type === 'resistor') add(n[0], n[1], 1 / Math.max(c.props.r, 0.01));
     else if (c.type === 'button') { if (c.props.pressed) add(n[0], n[1], 1 / WIRE_R); }
+    else if (c.type === 'capacitor') { const g = c.props.c / (dt || HOLD_DT); add(n[0], n[1], g, g * c.props.vc); }
+    else if (c.type === 'diode') add(n[0], n[1], 0, 0, { led: true, on: true });
     else if (c.type === 'switch') { if (c.props.on) add(n[0], n[1], 1 / WIRE_R); }
     else if (c.type === 'gate') {
       // Inputs are high impedance. The output pin is tied through a small resistance to + when the
@@ -140,16 +145,25 @@ function solveOnce(circuit) {
 
 // Simulates the circuit. An LED that gets too much current burns out: this marks it in the
 // circuit itself and reports it in `events`.
-export function simulate(circuit) {
+export function simulate(circuit, dt = 0) {
   const events = [];
   let res;
   for (let guard = 0; guard < 10; guard++) {
-    res = solveOnce(circuit);
+    res = solveOnce(circuit, dt);
     const burnt = circuit.comps.filter(c => c.type === 'led' && !c.burned && res.comps[c.id].i > LED_BURN_A);
     if (!burnt.length) break;
     for (const c of burnt) { c.burned = true; events.push({ type: 'burn', id: c.id, i: res.comps[c.id].i }); }
   }
+  if (dt > 0) for (const c of circuit.comps) if (c.type === 'capacitor') c.props.vc = res.comps[c.id].v;
   res.events = events;
+  return res;
+}
+
+// Runs the circuit forward in time, in small backward Euler steps. Returns the last result.
+export function advance(circuit, seconds, step = 0.005) {
+  const n = Math.max(1, Math.ceil(seconds / step));
+  let res;
+  for (let k = 0; k < n; k++) res = simulate(circuit, seconds / n);
   return res;
 }
 

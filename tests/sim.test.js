@@ -204,3 +204,47 @@ test('gate truth tables and evaluation', () => {
   assert.equal(gateEval('xor', [true, false]), true);
   assert.equal(gateEval('nor', [false, false]), true);
 });
+
+// ---------- diode and capacitor ----------
+import { advance } from '../js/sim/circuit.js';
+
+test('diode conducts forward with about 0.7 V and blocks in reverse', () => {
+  const c = newCircuit();
+  addComp(c, { id: 'WP', type: 'wire', pins: ['BAT+', 'p+1'] });
+  addComp(c, { id: 'WN', type: 'wire', pins: ['BAT-', 'p-1'] });
+  addComp(c, { id: 'W1', type: 'wire', pins: ['p+3', 'a3'] });
+  addComp(c, { id: 'D2', type: 'diode', pins: ['c3', 'c5'] });
+  addComp(c, { id: 'R1', type: 'resistor', pins: ['b5', 'b9'], props: { r: 470 } });
+  addComp(c, { id: 'W2', type: 'wire', pins: ['b9', 'p-9'] });
+  let s = simulate(c);
+  near(s.comps.D2.v, 0.84, 0.05);
+  near(s.comps.R1.i, (9 - 0.7) / 470, 0.001);
+  getComp(c, 'D2').pins.reverse();
+  s = simulate(c);
+  assert.ok(Math.abs(s.comps.R1.i) < 1e-6);
+  near(s.comps.D2.v, -9, 0.01);
+});
+
+test('RC charging follows 1 - e^(-t/RC), holds its charge and discharges', () => {
+  const c = newCircuit();
+  addComp(c, { id: 'WP', type: 'wire', pins: ['BAT+', 'p+1'] });
+  addComp(c, { id: 'WN', type: 'wire', pins: ['BAT-', 'p-1'] });
+  addComp(c, { id: 'W1', type: 'wire', pins: ['p+2', 'a2'] });
+  addComp(c, { id: 'S', type: 'switch', pins: ['b2', 'b4'], props: { on: true } });
+  addComp(c, { id: 'R1', type: 'resistor', pins: ['a4', 'a8'], props: { r: 470 } });
+  addComp(c, { id: 'C1', type: 'capacitor', pins: ['e8', 'e9'], props: { c: 0.001 } });
+  addComp(c, { id: 'W3', type: 'wire', pins: ['a9', 'p-9'] });
+  let s = simulate(c);
+  near(s.comps.C1.v, 0, 0.01);
+  s = advance(c, 0.47);
+  near(s.comps.C1.v, 9 * (1 - Math.exp(-1)), 0.15);
+  advance(c, 5);
+  near(getComp(c, 'C1').props.vc, 9, 0.01);
+  getComp(c, 'S').props.on = false;
+  advance(c, 2);
+  near(getComp(c, 'C1').props.vc, 9, 0.01);
+  addComp(c, { id: 'R2', type: 'resistor', pins: ['b8', 'b12'], props: { r: 470 } });
+  addComp(c, { id: 'W4', type: 'wire', pins: ['b12', 'p-12'] });
+  advance(c, 0.47);
+  near(getComp(c, 'C1').props.vc, 9 * Math.exp(-1), 0.15);
+});

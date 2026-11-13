@@ -67,13 +67,13 @@ async function playLesson(cfg, lesson) {
     if (!c) throw new Error('component not on board: ' + id);
     if (c.type === 'battery') return [BATTERY.x + BATTERY.w / 2, BATTERY.y + BATTERY.h / 2];
     const ps = c.pins.map(pt);
-    if (c.type === 'pot' || c.type === 'gate') return [(ps[0][0] + ps[ps.length - 1][0]) / 2, ps[0][1] - 30];
+    if (c.type === 'pot' || c.type === 'gate' || c.type === 'capacitor') return [(ps[0][0] + ps[ps.length - 1][0]) / 2, ps[0][1] - 30];
     return [(ps[0][0] + ps[ps.length - 1][0]) / 2, (ps[0][1] + ps[ps.length - 1][1]) / 2];
   };
   const state = () => page.evaluate(() => ({ step: __elab.player.debug.step, done: !!document.querySelector('.complete:not([hidden])') && getComputedStyle(document.querySelector('.complete')).display !== 'none', nextOn: !document.querySelector('.nx').disabled }));
   // Hebrew only: every number+unit in visible text must sit inside a bdi, code, svg or dir=ltr element.
   const unwrappedUnits = () => page.evaluate(() => {
-    const re = /(?<![\w.\/])-?\d+(?:[.,]\d+)?(?:\/\d+)?\s?(?:µA|mA|A|µV|mV|V|kΩ|MΩ|Ω|mW|W)(?![A-Za-z0-9µΩ])/;
+    const re = /(?<![\w.\/])-?\d+(?:[.,]\d+)?(?:\/\d+)?\s?(?:µA|mA|A|µV|mV|V|kΩ|MΩ|Ω|mW|W|µF|mF|F)(?![A-Za-z0-9µΩ])/;
     const bad = [], w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     for (let n; (n = w.nextNode());) {
       const el = n.parentElement;
@@ -135,7 +135,7 @@ async function playLesson(cfg, lesson) {
         }
       }
       // wait for auto-advance (wire/place) or the Next button
-      for (let i = 0; i < 30; i++) { st = await state(); if (st.step !== k || st.done || st.nextOn) break; await wait(100); }
+      for (let i = 0; i < (s.act === 'wait' ? 150 : 30); i++) { st = await state(); if (st.step !== k || st.done || st.nextOn) break; await wait(100); }
       if (st.step === k && !st.done) {
         if (!st.nextOn) throw new Error(`step ${k} (${s.type}${s.act ? ' ' + s.act : ''}) never completed`);
         if (k === n - 1) {

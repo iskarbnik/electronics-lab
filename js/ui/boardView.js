@@ -7,7 +7,7 @@ const reduceMotion = () => globalThis.matchMedia?.('(prefers-reduced-motion: red
 
 // ---------- geometry helpers (also used by the player) ----------
 const pinPos = c => c.pins.map(holePos);
-export const hasBody = c => c.type === 'pot' || c.type === 'gate';
+export const hasBody = c => c.type === 'pot' || c.type === 'gate' || c.type === 'capacitor';
 export function potBody(c) {
   const ps = pinPos(c), a = ps[0], b = ps[ps.length - 1];
   return { x: a.x - 14, y: a.y - 48, w: b.x - a.x + 28, h: 34 };
@@ -303,7 +303,25 @@ export function createBoardView(host, cb = {}) {
       grp.append(el('line', { x1: kx, y1: ky, x2: kx, y2: ky - 10, class: 'knobptr', transform: `rotate(${ang} ${kx} ${ky})` }));
       for (const p of [pa, pw, pb]) grp.append(plug(p));
     }
-    else if (c.type === 'switch') {
+    else if (c.type === 'diode') {
+      const [a, b] = ps, d = Math.hypot(b.x - a.x, b.y - a.y), ang = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+      const L = Math.min(26, d - 8), r = el('g', { transform: `translate(${(a.x + b.x) / 2} ${(a.y + b.y) / 2}) rotate(${ang})` });
+      r.append(el('line', { x1: -d / 2, y1: 0, x2: d / 2, y2: 0, class: 'leg' }));
+      r.append(el('rect', { x: -L / 2, y: -5.5, width: L, height: 11, rx: 3, class: 'diodebody' }));
+      r.append(el('rect', { x: L / 2 - 6, y: -5.5, width: 4, height: 11, class: 'diodestripe' }));
+      grp.append(r, plug(a), plug(b));
+    } else if (c.type === 'capacitor') {
+      const body = potBody(c), [pa, pb] = ps, s = st.sim || {};
+      for (const p of ps) grp.append(el('line', { x1: p.x, y1: p.y, x2: p.x, y2: body.y + body.h, class: 'leg' }));
+      grp.append(el('rect', { x: body.x, y: body.y, width: body.w, height: body.h, rx: 7, class: 'capbody' }));
+      grp.append(el('rect', { x: pb.x - 10, y: body.y + 2, width: 20, height: body.h - 4, rx: 4, class: 'capstripe' }));
+      const frac = Math.max(0, Math.min(1, (s.v || 0) / 9));
+      grp.append(el('rect', { x: body.x + 4, y: body.y + body.h - 7, width: Math.max(0, (body.w - 8) * frac), height: 4, rx: 2, class: 'capfill' }));
+      grp.append(el('text', { x: pa.x, y: body.y + 13, text: '+', class: 'cappol', 'text-anchor': 'middle' }));
+      grp.append(el('text', { x: pb.x, y: body.y + 13, text: '−', class: 'cappol', 'text-anchor': 'middle' }));
+      grp.append(el('text', { x: body.x + body.w / 2, y: body.y + 24, text: `${+(c.props.c * 1e6).toFixed(1)}µF`, class: 'captext', 'text-anchor': 'middle' }));
+      for (const p of ps) grp.append(plug(p));
+    } else if (c.type === 'switch') {
       const [a, b] = ps, m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, on = !!c.props.on;
       grp.append(el('line', { x1: a.x, y1: a.y, x2: m.x, y2: m.y, class: 'leg' }), el('line', { x1: b.x, y1: b.y, x2: m.x, y2: m.y, class: 'leg' }));
       grp.append(el('rect', { x: m.x - 17, y: m.y - 10, width: 34, height: 20, rx: 10, class: 'swbody' + (on ? ' on' : '') }));
@@ -348,7 +366,7 @@ export function createBoardView(host, cb = {}) {
     const items = [];
     for (const c of circuit.comps) {
       const s = sim?.comps[c.id];
-      if (!s || !['wire', 'resistor', 'led', 'button', 'switch'].includes(c.type)) continue;
+      if (!s || !['wire', 'resistor', 'led', 'button', 'switch', 'diode', 'capacitor'].includes(c.type)) continue;
       if ((c.type === 'button' && !c.props.pressed) || (c.type === 'switch' && !c.props.on)) continue;
       const [a, b] = pinPos(c);
       items.push({ key: c.id, d: `M${a.x} ${a.y}L${b.x} ${b.y}`, i: s.i });

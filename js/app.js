@@ -29,7 +29,7 @@ function renderHome() {
       ${started ? `<span class="badge">${esc(t('home.continue'))}</span>` : ''}
     </a></li>`;
   };
-  const units = [[1, 'home.unit1'], [2, 'home.unit2']].map(([u, key]) => {
+  const units = [[1, 'home.unit1'], [2, 'home.unit2'], [3, 'home.unit3']].map(([u, key]) => {
     const items = LESSONS.map((l, k) => [l, k]).filter(([l]) => (l.unit || 1) === u);
     return items.length ? `<h2>${esc(t(key))}</h2>${loadError ? '' : `<ol class="lessons">${items.map(([l, k]) => row(l, k)).join('')}</ol>`}` : '';
   }).join('');

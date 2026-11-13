@@ -93,11 +93,13 @@ export function mountLesson(root, lesson, opts = {}) {
     if (!snapshots[i]) snapshots[i] = buildCircuit(lesson, i);
     circuit = clone(snapshots[i]);
     const s = cur();
-    meterOn = s.type === 'measure';
+    meterOn = s.type === 'measure' || !!s.meter;
+    if (s.meter) probes = { red: s.meter.red, black: s.meter.black };
     if (passed.has(i) && (s.type === 'quiz' || s.type === 'explore')) { done = true; if (s.type === 'quiz') quizState = { picked: s.answer, right: true, wrong: false }; }
     store.setStep(lesson.id, i);
     sim = simulate(circuit);
     evalDone();
+    ensureLoop();
     focusStep();
     renderAll();
   }
@@ -141,11 +143,38 @@ export function mountLesson(root, lesson, opts = {}) {
   const stepDone = () => cur().type === 'info' || done;
 
   function recalc() {
+    ensureLoop();
     sim = simulate(circuit);
     for (const ev of sim.events) toast(t('toast.burn', { i: ltr(fmt(ev.i, 'A')) }));
     evalDone();
     renderAll();
   }
+
+  // Time runs live while a capacitor is on the board.
+  let raf = 0, lastT = 0;
+  const hasCap = () => circuit.comps.some(c => c.type === 'capacitor');
+  const vcs = () => circuit.comps.filter(c => c.type === 'capacitor').map(c => c.props.vc);
+  function ensureLoop() {
+    if (raf || complete || !hasCap()) return;
+    lastT = performance.now(); raf = requestAnimationFrame(tick);
+  }
+  function tick(now) {
+    raf = 0;
+    if (complete || !hasCap()) return;
+    const dt = Math.min(0.05, (now - lastT) / 1000) * (lesson.timeScale || 1);
+    lastT = now;
+    if (dt > 0) {
+      const before = vcs(), wasDone = done;
+      sim = simulate(circuit, dt);
+      for (const ev of sim.events) toast(t('toast.burn', { i: ltr(fmt(ev.i, 'A')) }));
+      evalDone();
+      const moved = vcs().some((v, k) => Math.abs(v - before[k]) > 1e-6) || sim.events.length;
+      if (moved) renderLive();
+      if (done !== wasDone) renderPanel();
+    }
+    raf = requestAnimationFrame(tick);
+  }
+  function renderLive() { renderMeter(); renderTruth(); renderBanner(); renderCard(); renderBoard(); renderSchem(); }
 
   function toast(html) {
     E.toast.innerHTML = bidi(html); E.toast.hidden = false;
@@ -186,7 +215,7 @@ export function mountLesson(root, lesson, opts = {}) {
     const hole = pt.hole || nearestHole(pt.x, pt.y, 10);
     if ((s.type === 'wire' || s.type === 'place') && !done) { if (hole) return placeTap(hole); }
     if (s.type === 'explore' && hole) return exploreTap(hole);
-    if (meterOn && hole) return probeTap(hole);
+    if (meterOn && hole && s.type !== 'do') return probeTap(hole);
     const cid = pt.comp || (pt.hole ? null : hitComp(circuit, pt.x, pt.y, 10));
     if (cid && getComp(circuit, cid)?.type === 'switch') return toggleSwitch(cid);
     if (cid) return selectComp(cid);
@@ -340,7 +369,7 @@ export function mountLesson(root, lesson, opts = {}) {
     E.meterBox.hidden = !meterOn;
     if (!meterOn) return;
     let body;
-    if (probes.red && probes.black) body = `<b class="mval">${fmt(cleanV(voltageBetween(sim, probes.red, probes.black)), 'V')}</b>`;
+    if (probes.red && probes.black) body = `<bdi dir="ltr"><b class="mval">${fmt(cleanV(voltageBetween(sim, probes.red, probes.black)), 'V')}</b></bdi>`;
     else body = `<span class="mhint">${bidi(probes.red ? t('meter.one') : t('meter.hint'))}</span>`;
     E.meterBox.innerHTML = `<span class="mtitle"><i class="dot red"></i><i class="dot black"></i>${t('meter.title')}</span>${body}`;
   }
@@ -370,6 +399,7 @@ export function mountLesson(root, lesson, opts = {}) {
     if (c.type === 'battery') return fmt(c.props.v, 'V');
     if (c.type === 'pot') return fmt(c.props.r, 'Ω');
     if (c.type === 'gate') return c.props.fn.toUpperCase();
+    if (c.type === 'capacitor') return `${+(c.props.c * 1e6).toFixed(1)} µF`;
     return '';
   }
   function renderCard() {
@@ -388,6 +418,7 @@ export function mountLesson(root, lesson, opts = {}) {
     else if (c.type === 'led') { status = c.burned ? t('card.burned') : st.lit ? t('card.lit') : t('card.off'); bad = c.burned; }
     else if (c.type === 'button') status = c.props.pressed ? t('card.pressed') : t('card.released');
     else if (c.type === 'switch') status = c.props.on ? t('card.swon') : t('card.swoff');
+    else if (c.type === 'diode') status = st.i > 1e-5 ? t('card.cond') : t('card.block');
     else if (c.type === 'gate') {
       const names = c.pins.length === 3 ? ['A', 'B'] : ['A'];
       status = t('card.gate', { ins: ltr((st.inputs || []).map((b, k) => `${names[k]}=${b ? 1 : 0}`).join(', ')), y: ltr(st.out ? 1 : 0) });
@@ -443,7 +474,7 @@ export function mountLesson(root, lesson, opts = {}) {
     }
     const row2 = h('div', 'btnrow');
     const mkBtn = (label, enabled, fn, cls = '') => { const b = h('button', 'btn small ' + cls, label); b.type = 'button'; b.disabled = !enabled; b.addEventListener('click', fn); row2.append(b); };
-    if (c.type === 'led') mkBtn(t('card.flip'), flags.flip, () => { const cc = getComp(circuit, c.id); if (cc) { cc.pins = [cc.pins[1], cc.pins[0]]; recalc(); } });
+    if (c.type === 'led' || c.type === 'diode') mkBtn(t('card.flip'), flags.flip, () => { const cc = getComp(circuit, c.id); if (cc) { cc.pins = [cc.pins[1], cc.pins[0]]; recalc(); } });
     if (c.burned) mkBtn(t('card.replace'), true, () => { const cc = getComp(circuit, c.id); if (cc) { cc.burned = false; recalc(); } }, 'primary');
     if (c.type !== 'battery' && c.type !== 'wire' || flags.remove) mkBtn(t('card.remove'), flags.remove, () => { removeComp(circuit, c.id); selection = null; recalc(); }, 'danger');
     if (row2.children.length) ctl.append(row2);
@@ -481,7 +512,7 @@ export function mountLesson(root, lesson, opts = {}) {
   enter(startStep);
 
   return {
-    destroy() { clearTimeout(advanceTimer); clearTimeout(toastTimer); off(); board.destroy(); schem?.destroy(); rootEl.remove(); },
+    destroy() { cancelAnimationFrame(raf); clearTimeout(advanceTimer); clearTimeout(toastTimer); off(); board.destroy(); schem?.destroy(); rootEl.remove(); },
     // for tests and automation
     debug: { get step() { return stepIdx; }, get circuit() { return circuit; }, get sim() { return sim; } },
   };

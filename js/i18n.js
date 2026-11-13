@@ -8,11 +8,12 @@ const S = {
   'home.progress': ['{n} of {m} lessons done', '{n} מתוך {m} שיעורים הושלמו'],
   'home.unit1': ['Unit 1: The basics', 'יחידה 1: היסודות'],
   'home.unit2': ['Unit 2: Logic gates', 'יחידה 2: שערים לוגיים'],
+  'home.unit3': ['Unit 3: More parts', 'יחידה 3: עוד רכיבים'],
   'home.continue': ['Continue', 'המשך'],
   'home.done': ['Done', 'הושלם'],
   'home.lesson': ['Lesson {n}', 'שיעור {n}'],
   'home.next': ['Coming next', 'בקרוב'],
-  'soon.parts': ['More parts: capacitors, diodes, transistors', 'עוד רכיבים: קבלים, דיודות וטרנזיסטורים'],
+  'soon.parts': ['Transistors, the oscilloscope and more', 'טרנזיסטורים, אוסילוסקופ ועוד'],
   'soon.scope': ['Oscilloscope and calculators', 'אוסילוסקופ ומחשבונים'],
   'soon.enc': ['Parts encyclopedia', 'אנציקלופדיית רכיבים'],
   'soon.arduino': ['Arduino Uno with code', 'Arduino Uno עם קוד'],
@@ -49,10 +50,11 @@ const S = {
   'hint.measureBlack': ['Now tap the hole for the black probe (highlighted).', 'עכשיו הקישו על החור של הגשוש השחור (מסומן).'],
   'hint.measureWrong': ['Move the probes to the highlighted strips.', 'העבירו את הגשושים לפסים המסומנים.'],
   'hint.do.select': ['Tap the part to select it.', 'הקישו על הרכיב כדי לבחור בו.'],
-  'hint.do.flip': ['Select the LED and press Flip.', 'בחרו בנורית ולחצו על ״הפוך״.'],
+  'hint.do.flip': ['Select the part and press Flip.', 'בחרו ברכיב ולחצו על ״הפוך״.'],
   'hint.do.remove': ['Select the part and press Remove.', 'בחרו ברכיב ולחצו על ״הסר״.'],
   'hint.do.replace': ['Select the burned LED and press Replace.', 'בחרו בנורית השרופה ולחצו על ״החלף״.'],
   'hint.do.set': ['Select the resistor and pick a value.', 'בחרו בנגד ובחרו ערך.'],
+  'hint.do.wait': ['Wait and watch. This takes a couple of seconds.', 'המתינו וצפו. זה לוקח כמה שניות.'],
   'hint.do.toggle': ['Tap the switch to flip it.', 'הקישו על המתג כדי להפוך אותו.'],
   'hint.do.setfn': ['Select the gate and pick the new function.', 'בחרו בשער ובחרו את הפונקציה החדשה.'],
   'hint.do.press': ['Press and hold the button.', 'לחצו והחזיקו את הלחצן.'],
@@ -77,6 +79,8 @@ const S = {
   'card.burned': ['Burned out', 'שרופה'],
   'card.lit': ['Lit', 'דולקת'],
   'card.off': ['Off', 'כבויה'],
+  'card.cond': ['Conducting', 'מוליכה'],
+  'card.block': ['Blocking', 'חוסמת'],
   'card.swon': ['On (closed)', 'דולק (סגור)'],
   'card.swoff': ['Off (open)', 'כבוי (פתוח)'],
   'card.gate': ['Inputs {ins}. Output Y={y}.', 'כניסות {ins}. מוצא Y={y}.'],
@@ -88,6 +92,8 @@ const S = {
   'part.resistor': ['Resistor', 'נגד'],
   'part.led': ['LED', 'נורית LED'],
   'part.button': ['Push button', 'לחצן'],
+  'part.diode': ['Diode', 'דיודה'],
+  'part.capacitor': ['Capacitor', 'קבל'],
   'part.switch': ['Slide switch', 'מתג הזזה'],
   'part.gate': ['Logic gate', 'שער לוגי'],
   'part.pot': ['Potentiometer', 'פוטנציומטר'],
@@ -141,7 +147,7 @@ export const ltr = s => `<bdi dir="ltr">${s}</bdi>`;
 
 // Wraps every number+unit run ("819 mA", "4.7 kΩ", "1/4 W") in an isolated LTR <bdi>, so it keeps its
 // order inside Hebrew text. Leaves HTML tags, <code> and existing <bdi> content untouched.
-const UNIT_RUN = /((?:(?<![\p{L}\d.\/-])-)?(?<![\w.\/])\d+(?:[.,]\d+)?(?:\/\d+)?)(\s?)(µA|mA|A|µV|mV|V|kΩ|MΩ|Ω|mW|W)(?![A-Za-z0-9µΩ])/gu;
+const UNIT_RUN = /((?:(?<![\p{L}\d.\/-])-)?(?<![\w.\/])\d+(?:[.,]\d+)?(?:\/\d+)?)(\s?)(µA|mA|A|µV|mV|V|kΩ|MΩ|Ω|mW|W|µF|mF|F)(?![A-Za-z0-9µΩ])/gu;
 export function bidi(html) {
   if (!html) return html;
   let skip = 0;

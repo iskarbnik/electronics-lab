@@ -16,6 +16,7 @@ function valueText(type, comp, plan) {
   if (type === 'battery') return fmt(p.v ?? 9, 'V');
   if (type === 'resistor') return fmt(p.r ?? 470, 'Ω');
   if (type === 'pot') return fmt(p.r ?? 10000, 'Ω');
+  if (type === 'capacitor') return `${+((p.c ?? 0.001) * 1e6).toFixed(1)} µF`;
   if (type === 'gate') return String(p.fn ?? 'and').toUpperCase();
   return '';
 }
@@ -40,6 +41,14 @@ function symbol(part, comp, plan, sim) {
     g.append(el('path', { d: 'M10 -12V12', class: 'plate' }));
     g.append(el('path', { d: 'M-2 -16L6 -24M-2 -16L1 -16M-2 -16L-2 -19 M6 -16L14 -24M6 -16L9 -16M6 -16L6 -19', class: 'arrows', stroke: hex }));
     if (comp?.burned) g.append(el('path', { d: 'M-8 -8L8 8M8 -8L-8 8', class: 'burnx' }));
+  } else if (t === 'diode') {
+    line('M-40 0H-10'); line('M10 0H40');
+    g.append(el('path', { d: 'M-10 -12V12L10 0Z', class: 'ledtri', fill: '#c7d0dc', 'fill-opacity': sim?.comps[part.id]?.i > 1e-4 ? 0.45 : 0.1, stroke: '#c7d0dc' }));
+    g.append(el('path', { d: 'M10 -12V12', class: 'plate' }));
+  } else if (t === 'capacitor') {
+    line('M-40 0H-6'); line('M6 0H40');
+    g.append(el('path', { d: 'M-6 -17V17', class: 'plate long' }), el('path', { d: 'M6 -17V17', class: 'plate long' }));
+    g.append(el('text', { x: -17, y: -10, text: '+', class: 'sch-plus', 'text-anchor': 'middle' }));
   } else if (t === 'gate') {
     const fn = comp?.props.fn ?? plan?.props?.fn ?? 'and', s = sim?.comps[part.id];
     const inv = fn === 'nand' || fn === 'nor' || fn === 'not';
