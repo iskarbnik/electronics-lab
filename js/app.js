@@ -9,7 +9,7 @@ let player = null;
 let loadError = false;
 
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const SOON = ['soon.parts', 'soon.scope', 'soon.enc', 'soon.logic', 'soon.arduino', 'soon.sandbox', 'soon.esp'];
+const SOON = ['soon.parts', 'soon.scope', 'soon.enc', 'soon.arduino', 'soon.sandbox', 'soon.esp'];
 
 function langSwitch() {
   const cur = getLang();
@@ -21,13 +21,17 @@ function langSwitch() {
 function renderHome() {
   document.title = t('app.name');
   const total = LESSONS.length, n = LESSONS.filter(l => store.isDone(l.id)).length;
-  const rows = LESSONS.map((l, k) => {
+  const row = (l, k) => {
     const done = store.isDone(l.id), started = !done && store.getStep(l.id) > 0;
     return `<li><a class="lrow${done ? ' done' : ''}" href="#/lesson/${esc(l.id)}">
       <span class="num">${done ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr">' + esc(t('home.done')) + '</span>' : k + 1}</span>
       <span class="lbody"><b>${esc(L(l.title))}</b><span>${L(l.summary)}</span></span>
       ${started ? `<span class="badge">${esc(t('home.continue'))}</span>` : ''}
     </a></li>`;
+  };
+  const units = [[1, 'home.unit1'], [2, 'home.unit2']].map(([u, key]) => {
+    const items = LESSONS.map((l, k) => [l, k]).filter(([l]) => (l.unit || 1) === u);
+    return items.length ? `<h2>${esc(t(key))}</h2>${loadError ? '' : `<ol class="lessons">${items.map(([l, k]) => row(l, k)).join('')}</ol>`}` : '';
   }).join('');
   app.innerHTML = `
   <div class="home">
@@ -38,8 +42,7 @@ function renderHome() {
     <p class="tagline">${esc(t('home.tagline'))}</p>
     <div class="progress"><div class="ptext">${t('home.progress', { n: ltr(n), m: ltr(total) })}</div>
       <div class="pbar big" role="progressbar" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${n}"><i style="width:${total ? n / total * 100 : 0}%"></i></div></div>
-    <h2>${esc(t('home.unit1'))}</h2>
-    ${loadError ? `<p class="err">${esc(t('lesson.loadError'))}</p>` : `<ol class="lessons">${rows}</ol>`}
+    ${loadError ? `<p class="err">${esc(t('lesson.loadError'))}</p>` : units}
     <h2 class="dim">${esc(t('home.next'))}</h2>
     <ul class="soon">${SOON.map(k => `<li>${esc(t(k))}</li>`).join('')}</ul>
     <button class="btn ghost reset" type="button">${esc(t('home.reset'))}</button>

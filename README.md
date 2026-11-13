@@ -6,7 +6,7 @@ A bilingual (Hebrew RTL and English), installable PWA that teaches electronics o
 
 1. Foundation: breadboard and schematic simulator, 10 lessons on voltage, current, resistors, LEDs, power, buttons and potentiometers.
 2. More parts: capacitors, diodes, transistors, oscilloscope, calculators, parts encyclopedia.
-3. Digital logic gates.
+3. Digital logic gates: switches, pull-down resistors, NOT, AND, OR, NAND, NOR, XOR and a half adder (lessons 11 to 16).
 4. Arduino Uno with code.
 5. Sandbox, challenges and an AI tutor.
 6. ESP32.

@@ -5,6 +5,7 @@
 
 import { stripOf } from './board.js';
 import { solveLinear } from './solver.js';
+import { gateEval } from './logic.js';
 
 export const LED_VF = { red: 2.0, yellow: 2.1, green: 2.2, blue: 3.0, white: 3.0 };
 export const LED_NOMINAL_A = 0.02;   // comfortable LED current
@@ -14,6 +15,7 @@ export const SHORT_A = 1;            // battery current that counts as a short c
 const LED_RS = 8;
 const WIRE_R = 0.01;
 const BATTERY_R = 0.5;
+const GATE_R = 25;   // output resistance of a gate pin, like a 74HC chip
 const GMIN = 1e-9;
 
 const DEFAULTS = {
@@ -23,6 +25,8 @@ const DEFAULTS = {
   led: p => ({ color: 'red', vf: LED_VF[p?.color || 'red'] }),
   button: () => ({ pressed: false }),
   pot: () => ({ r: 10000, pos: 0.5 }),
+  switch: () => ({ on: false }),
+  gate: () => ({ fn: 'and' }),
 };
 
 export function newCircuit(v = 9) {
@@ -49,6 +53,8 @@ function solveOnce(circuit) {
     return nodes.get(s);
   };
   const ground = node('BAT-');
+  const plus = node('BAT+');
+  const vcc = circuit.comps.find(c => c.type === 'battery')?.props.v ?? 9;
   const els = [];
   for (const c of circuit.comps) {
     const n = c.pins.map(node);
@@ -57,6 +63,12 @@ function solveOnce(circuit) {
     else if (c.type === 'wire') add(n[0], n[1], 1 / WIRE_R);
     else if (c.type === 'resistor') add(n[0], n[1], 1 / Math.max(c.props.r, 0.01));
     else if (c.type === 'button') { if (c.props.pressed) add(n[0], n[1], 1 / WIRE_R); }
+    else if (c.type === 'switch') { if (c.props.on) add(n[0], n[1], 1 / WIRE_R); }
+    else if (c.type === 'gate') {
+      // Inputs are high impedance. The output pin is tied through a small resistance to + when the
+      // gate says 1 and to - when it says 0, so the battery supplies the current. Power is implicit.
+      els.push({ c, a: n[n.length - 1], b: plus, g: 1 / GATE_R, is: 0, gate: true, ins: n.slice(0, -1), out: !!c.out });
+    }
     else if (c.type === 'led') { if (!c.burned) add(n[0], n[1], 0, 0, { led: true, on: true }); }
     else if (c.type === 'pot') {
       add(n[0], n[1], 1 / Math.max(c.props.r * c.props.pos, 1), 0, { part: 0 });
@@ -71,6 +83,7 @@ function solveOnce(circuit) {
     const b = new Array(N).fill(0);
     for (let k = 0; k < N; k++) A[k][k] = GMIN;
     for (const e of els) {
+      if (e.gate) { e.b = e.out ? plus : ground; }
       if (e.led) { e.g = e.on ? 1 / LED_RS : GMIN; e.is = e.on ? e.c.props.vf / LED_RS : 0; }
       A[e.a][e.a] += e.g; A[e.b][e.b] += e.g; A[e.a][e.b] -= e.g; A[e.b][e.a] -= e.g;
       b[e.a] += e.is; b[e.b] -= e.is;
@@ -79,6 +92,11 @@ function solveOnce(circuit) {
     V = solveLinear(A, b);
     let changed = false;
     for (const e of els) {
+      if (e.gate) {
+        const out = gateEval(e.c.props.fn, e.ins.map(k => V[k] - V[ground] > vcc / 2));
+        if (out !== e.out) { e.out = out; changed = true; }
+        continue;
+      }
       if (!e.led) continue;
       const dv = V[e.a] - V[e.b];
       if (e.on && dv < e.c.props.vf - 1e-9) { e.on = false; changed = true; }
@@ -94,7 +112,11 @@ function solveOnce(circuit) {
     const dv = V[e.a] - V[e.b];
     let i = e.g * dv - e.is;
     if (e.led && !e.on) i = 0;
-    if (e.c.type === 'battery') { r.v = dv; r.i = -i; r.p = dv * -i; }
+    if (e.gate) {
+      r.v = V[e.a] - V[ground]; r.i = -i; r.p = Math.abs(dv * i); r.out = e.out;
+      r.inputs = e.ins.map(k => V[k] - V[ground] > vcc / 2); e.c.out = e.out;
+    }
+    else if (e.c.type === 'battery') { r.v = dv; r.i = -i; r.p = dv * -i; }
     else if (e.c.type === 'pot') {
       if (e.part === 0) { r.v = dv; r.i = i; }
       r.p += Math.abs(dv * i);
@@ -108,7 +130,7 @@ function solveOnce(circuit) {
       r.brightness = Math.max(0, Math.min(1, r.i / LED_NOMINAL_A));
       if (c.burned) r.v = V[nodes.get(stripOf(c.pins[0]))] - V[nodes.get(stripOf(c.pins[1]))];
     }
-    if (c.type === 'button' && !c.props.pressed) r.v = V[nodes.get(stripOf(c.pins[0]))] - V[nodes.get(stripOf(c.pins[1]))];
+    if ((c.type === 'button' && !c.props.pressed) || (c.type === 'switch' && !c.props.on)) r.v = V[nodes.get(stripOf(c.pins[0]))] - V[nodes.get(stripOf(c.pins[1]))];
     if (c.type === 'resistor') r.hot = r.p > RESISTOR_MAX_W;
   }
   const nodeV = {};

@@ -67,7 +67,7 @@ async function playLesson(cfg, lesson) {
     if (!c) throw new Error('component not on board: ' + id);
     if (c.type === 'battery') return [BATTERY.x + BATTERY.w / 2, BATTERY.y + BATTERY.h / 2];
     const ps = c.pins.map(pt);
-    if (c.type === 'pot') return [ps[1][0], ps[1][1] - 30];
+    if (c.type === 'pot' || c.type === 'gate') return [(ps[0][0] + ps[ps.length - 1][0]) / 2, ps[0][1] - 30];
     return [(ps[0][0] + ps[ps.length - 1][0]) / 2, (ps[0][1] + ps[ps.length - 1][1]) / 2];
   };
   const state = () => page.evaluate(() => ({ step: __elab.player.debug.step, done: !!document.querySelector('.complete:not([hidden])') && getComputedStyle(document.querySelector('.complete')).display !== 'none', nextOn: !document.querySelector('.nx').disabled }));
@@ -104,7 +104,7 @@ async function playLesson(cfg, lesson) {
         await page.click(`.opt >> nth=${s.answer}`);
       } else if (s.type === 'explore') await tapHole(s.want === 'rail' ? 'p+12' : 'c12');
       else if (s.type === 'wire') { await tapHole(s.pins[0]); await tapHole(s.pins[1]); }
-      else if (s.type === 'place') { if (s.kind === 'pot') await tapHole(s.pins[0]); else { await tapHole(s.pins[0]); await tapHole(s.pins[1]); } }
+      else if (s.type === 'place') { if (s.kind === 'pot' || s.kind === 'gate') await tapHole(s.pins[0]); else { await tapHole(s.pins[0]); await tapHole(s.pins[1]); } }
       else if (s.type === 'measure') { await tapHole(s.red); await tapHole(s.black); }
       else if (s.type === 'do') {
         const q = await toScreen(await compPoint(s.comp));
@@ -126,6 +126,9 @@ async function playLesson(cfg, lesson) {
           else if (s.act === 'set') {
             const probe = { comps: [{ id: s.comp, props: {} }] }; s.auto(probe);
             await page.locator('.card .chip', { hasText: new RegExp(`^${fmt(probe.comps[0].props.r, 'Ω')}$`) }).click();
+          } else if (s.act === 'setfn') {
+            const probe = { comps: [{ id: s.comp, props: {} }] }; s.auto(probe);
+            await page.locator('.card .chip', { hasText: new RegExp(`^${probe.comps[0].props.fn.toUpperCase()}$`) }).click();
           } else if (s.act === 'turn') {
             await page.$eval('.card input[type=range]', (el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }, s.range.value);
           }

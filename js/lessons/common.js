@@ -33,6 +33,14 @@ export const replace = (comp, text, extra) => doStep(comp, 'replace', text,
   c => { const x = getComp(c, comp); if (x) x.burned = false; },
   (sim, c) => { const x = getComp(c, comp); return !!x && !x.burned; }, extra);
 
+export const toggle = (comp, on, text, extra) => doStep(comp, 'toggle', text,
+  c => { const x = getComp(c, comp); if (x) x.props.on = on; },
+  (sim, c) => { const x = getComp(c, comp); return !!x && !!x.props.on === on; }, extra);
+
+export const setFn = (comp, fn, text, extra) => doStep(comp, 'setfn', text,
+  c => { const x = getComp(c, comp); if (x) x.props.fn = fn; },
+  (sim, c) => { const x = getComp(c, comp); return !!x && x.props.fn === fn; }, extra);
+
 export const setR = (comp, ohms, text, extra) => doStep(comp, 'set', text,
   c => { const x = getComp(c, comp); if (x) x.props.r = ohms; },
   (sim, c) => { const x = getComp(c, comp); return !!x && x.props.r === ohms; }, extra);

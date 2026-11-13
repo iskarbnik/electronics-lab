@@ -2,6 +2,7 @@
 import { COLS, TERMINALS, VIEW, stripOf, holesOfStrip, holePos, parseHole, nearestHole } from '../sim/board.js';
 import { simulate, usedHoles, getComp, clone, addComp, removeComp, voltageBetween } from '../sim/circuit.js';
 import { fmt } from '../sim/format.js';
+import { GATE_FNS, truthTable } from '../sim/logic.js';
 import { buildCircuit } from '../lessons/engine.js';
 import { t, L, ltr, bidi, getLang, onLang } from '../i18n.js';
 import * as store from '../store.js';
@@ -18,6 +19,7 @@ const ICON = {
 };
 const CHIPS = [100, 220, 330, 470, 1000, 2200, 4700, 10000];
 const cleanV = v => (Math.abs(v) < 5e-4 ? 0 : v);
+const multi = k => k === 'pot' || k === 'gate';
 const isTerm = h => h === 'BAT+' || h === 'BAT-';
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -46,6 +48,7 @@ export function mountLesson(root, lesson, opts = {}) {
       <section class="pane boardpane">
         <div class="banner" hidden></div>
         <div class="meterbox" hidden></div>
+        <div class="truthbox" hidden></div>
         <div class="bhost"></div>
         <div class="toast" hidden role="status"></div>
         <div class="card" hidden></div>
@@ -64,7 +67,7 @@ export function mountLesson(root, lesson, opts = {}) {
   const $ = s => rootEl.querySelector(s);
   const E = {
     back: $('.back'), title: $('.ltitle h1'), stepLbl: $('.lstep'), meterBtn: $('.meterbtn'), fitBtn: $('.fitbtn'), bar: $('.pbar'),
-    bhost: $('.bhost'), meterBox: $('.meterbox'), banner: $('.banner'), toast: $('.toast'), card: $('.card'),
+    bhost: $('.bhost'), meterBox: $('.meterbox'), truthBox: $('.truthbox'), banner: $('.banner'), toast: $('.toast'), card: $('.card'),
     schemPane: $('.schempane'), schemToggle: $('.schemtoggle'), shost: $('.shost'),
     text: $('.steptext'), quiz: $('.quiz'), hint: $('.hint'), bk: $('.bk'), nx: $('.nx'), complete: $('.complete'),
   };
@@ -103,10 +106,10 @@ export function mountLesson(root, lesson, opts = {}) {
     const s = cur(), boxes = [];
     const railPt = (strip, otherPin) => { const c = otherPin && parseHole(otherPin)?.col || 1; const p = holePos(strip + c) || holePos(strip + 1); return { x: p.x - 10, y: p.y - 10, w: 20, h: 20 }; };
     const stripFor = (strip, otherPin) => (/^[pq]/.test(strip) ? railPt(strip, otherPin) : stripBox(strip));
-    if (s.type === 'wire' || (s.type === 'place' && s.kind !== 'pot')) {
+    if (s.type === 'wire' || (s.type === 'place' && !multi(s.kind))) {
       s.pins.forEach((p, k) => boxes.push(stripFor(stripOf(p), s.pins[1 - k])));
     } else if (s.type === 'place') {
-      const a = holePos(s.pins[0]), b = holePos(s.pins[2]);
+      const a = holePos(s.pins[0]), b = holePos(s.pins[s.pins.length - 1]);
       boxes.push({ x: a.x - 14, y: a.y - 50, w: b.x - a.x + 28, h: 62 });
     } else if (s.type === 'measure') {
       boxes.push(stripFor(stripOf(s.red), s.black), stripFor(stripOf(s.black), s.red));
@@ -185,8 +188,16 @@ export function mountLesson(root, lesson, opts = {}) {
     if (s.type === 'explore' && hole) return exploreTap(hole);
     if (meterOn && hole) return probeTap(hole);
     const cid = pt.comp || (pt.hole ? null : hitComp(circuit, pt.x, pt.y, 10));
+    if (cid && getComp(circuit, cid)?.type === 'switch') return toggleSwitch(cid);
     if (cid) return selectComp(cid);
     if (hole) { ui.tapped = new Set([stripOf(hole)]); renderBoard(); renderPanel(); }
+  }
+
+  function toggleSwitch(id) {
+    const c = getComp(circuit, id);
+    c.props.on = !c.props.on;
+    ui.selected.add(id);
+    recalc();
   }
 
   function selectComp(id) {
@@ -216,11 +227,11 @@ export function mountLesson(root, lesson, opts = {}) {
     const s = cur(), strips = s.pins.map(stripOf), used = usedHoles(circuit), strip = stripOf(hole);
     if (pending && hole === pending.hole) { pending = null; hintOv = null; return renderAll(); }
     if (!isTerm(hole) && used.has(hole)) return setHint('hint.occupied');
-    if (s.type === 'place' && s.kind === 'pot') {
+    if (s.type === 'place' && multi(s.kind)) {
       if (strip !== strips[0]) return setHint('hint.wrongStrip');
-      const p = parseHole(hole);
-      const hs = [0, 1, 2].map(k => p.row + (p.col + k));
-      if (p.col + 2 > COLS || hs.some(x => used.has(x))) return setHint('hint.potSpace');
+      const p = parseHole(hole), n = s.pins.length;
+      const hs = Array.from({ length: n }, (_, k) => p.row + (p.col + k));
+      if (p.col + n - 1 > COLS || hs.some(x => used.has(x))) return setHint('hint.potSpace');
       return commit(hs);
     }
     if (!pending) {
@@ -254,12 +265,12 @@ export function mountLesson(root, lesson, opts = {}) {
     const pick = (strip, canon) => (canon && stripOf(canon) === strip && free(canon) ? canon : holesOfStrip(strip).find(free) || null);
     if ((s.type === 'wire' || s.type === 'place') && !done) {
       const strips = s.pins.map(stripOf);
-      const idxs = s.kind === 'pot' ? [0] : pending ? [1 - pending.idx] : [0, 1];
+      const idxs = multi(s.kind) ? [0] : pending ? [1 - pending.idx] : [0, 1];
       for (const k of idxs) {
         if (strips[k] !== undefined && !g.rings.some(r => r.strip === strips[k])) g.rings.push({ strip: strips[k], kind: 'target' });
       }
       g.pulse = pick(strips[idxs[0]], s.pins[idxs[0]]);
-      if (s.kind === 'pot') { const p = s.pins[0]; g.pulse = free(p) ? p : g.pulse; }
+      if (multi(s.kind)) { const p = s.pins[0]; g.pulse = free(p) ? p : g.pulse; }
     } else if (s.type === 'measure' && !done) {
       const rs = stripOf(s.red), bs = stripOf(s.black);
       const onRed = probes.red && stripOf(probes.red) === rs;
@@ -334,6 +345,20 @@ export function mountLesson(root, lesson, opts = {}) {
     E.meterBox.innerHTML = `<span class="mtitle"><i class="dot red"></i><i class="dot black"></i>${t('meter.title')}</span>${body}`;
   }
 
+  function renderTruth() {
+    const g = lesson.truth && getComp(circuit, lesson.truth);
+    E.truthBox.hidden = !g;
+    if (!g) return;
+    const st = sim.comps[g.id] || {}, cur = st.inputs || [];
+    const bit = b => (b ? 1 : 0);
+    const chips = truthTable(g.props.fn, g.pins.length - 1).map(([ins, out]) => {
+      const on = cur.length === ins.length && ins.every((v, k) => v === cur[k]);
+      return `<span class="tchip${on ? ' on' : ''}${out ? ' hi' : ''}"><bdi dir="ltr">${ins.map(bit).join(' ')}<i>&rarr;</i><b>${bit(out)}</b></bdi></span>`;
+    }).join('');
+    const names = g.pins.length === 3 ? 'A B Y' : 'A Y';
+    E.truthBox.innerHTML = `<span class="mtitle">${t('truth.title')} <bdi dir="ltr" class="tnames">${names}</bdi></span><span class="tchips">${chips}</span>`;
+  }
+
   function renderBanner() {
     E.banner.hidden = !sim.short;
     if (sim.short) E.banner.innerHTML = t('banner.short', { i: ltr(fmt(sim.comps.BAT.i, 'A')) });
@@ -344,14 +369,15 @@ export function mountLesson(root, lesson, opts = {}) {
     if (c.type === 'resistor') return fmt(c.props.r, 'Ω');
     if (c.type === 'battery') return fmt(c.props.v, 'V');
     if (c.type === 'pot') return fmt(c.props.r, 'Ω');
+    if (c.type === 'gate') return c.props.fn.toUpperCase();
     return '';
   }
   function renderCard() {
     const c = selection && getComp(circuit, selection);
     if (!c || !cardOpen || complete) { E.card.hidden = true; cardKey = ''; return; }
     const s = cur(), mine = s.type === 'do' && s.comp === c.id;
-    const flags = { set: mine && s.act === 'set', flip: mine && s.act === 'flip', remove: mine && s.act === 'remove' };
-    const key = [c.id, c.type, c.burned, flags.set, flags.flip, flags.remove, getLang()].join('|');
+    const flags = { setfn: mine && s.act === 'setfn', set: mine && s.act === 'set', flip: mine && s.act === 'flip', remove: mine && s.act === 'remove' };
+    const key = [c.id, c.type, c.burned, flags.setfn, flags.set, flags.flip, flags.remove, getLang()].join('|');
     if (key !== cardKey) { buildCard(c, flags); cardKey = key; }
     E.card.hidden = false;
     const st = sim.comps[c.id] || { v: 0, i: 0, p: 0 };
@@ -361,8 +387,14 @@ export function mountLesson(root, lesson, opts = {}) {
     if (c.type === 'resistor' && st.hot) { status = t('card.hot'); bad = true; }
     else if (c.type === 'led') { status = c.burned ? t('card.burned') : st.lit ? t('card.lit') : t('card.off'); bad = c.burned; }
     else if (c.type === 'button') status = c.props.pressed ? t('card.pressed') : t('card.released');
+    else if (c.type === 'switch') status = c.props.on ? t('card.swon') : t('card.swoff');
+    else if (c.type === 'gate') {
+      const names = c.pins.length === 3 ? ['A', 'B'] : ['A'];
+      status = t('card.gate', { ins: ltr((st.inputs || []).map((b, k) => `${names[k]}=${b ? 1 : 0}`).join(', ')), y: ltr(st.out ? 1 : 0) });
+    }
     R.status.innerHTML = bidi(status); R.status.className = 'cstatus' + (bad ? ' bad' : '') + (status ? '' : ' empty');
     if (R.chips) R.chips.forEach(([b, v]) => b.classList.toggle('on', c.props.r === v));
+    if (R.fnChips) R.fnChips.forEach(([b, v]) => b.classList.toggle('on', c.props.fn === v));
     if (R.slider) {
       if (document.activeElement !== R.slider) R.slider.value = c.props.pos;
       R.sliderVal.textContent = fmt(c.props.r * c.props.pos, 'Ω');
@@ -379,7 +411,7 @@ export function mountLesson(root, lesson, opts = {}) {
     const vals = h('div', 'cvals', `<div><span>${t('card.v')}</span><bdi dir="ltr" class="num v"></bdi></div><div><span>${t('card.i')}</span><bdi dir="ltr" class="num i"></bdi></div><div><span>${t('card.p')}</span><bdi dir="ltr" class="num p"></bdi></div>`);
     const status = h('div', 'cstatus');
     E.card.append(head, vals, status);
-    cardRefs = { v: vals.querySelector('.v'), i: vals.querySelector('.i'), p: vals.querySelector('.p'), status, chips: null, slider: null };
+    cardRefs = { v: vals.querySelector('.v'), i: vals.querySelector('.i'), p: vals.querySelector('.p'), status, chips: null, fnChips: null, slider: null };
     const ctl = h('div', 'cctl');
     if (c.type === 'resistor') {
       cardRefs.chips = [];
@@ -388,6 +420,16 @@ export function mountLesson(root, lesson, opts = {}) {
         const b = h('button', 'chip'); b.type = 'button'; b.textContent = fmt(v, 'Ω'); b.dir = 'ltr'; b.disabled = !flags.set;
         b.addEventListener('click', () => { const cc = getComp(circuit, c.id); if (cc) { cc.props.r = v; recalc(); } });
         row.append(b); cardRefs.chips.push([b, v]);
+      }
+      ctl.append(row);
+    }
+    if (c.type === 'gate' && c.pins.length === 3) {
+      cardRefs.fnChips = [];
+      const row = h('div', 'chips');
+      for (const v of GATE_FNS) {
+        const b = h('button', 'chip'); b.type = 'button'; b.textContent = v.toUpperCase(); b.dir = 'ltr'; b.disabled = !flags.setfn;
+        b.addEventListener('click', () => { const cc = getComp(circuit, c.id); if (cc) { cc.props.fn = v; recalc(); } });
+        row.append(b); cardRefs.fnChips.push([b, v]);
       }
       ctl.append(row);
     }
@@ -420,7 +462,7 @@ export function mountLesson(root, lesson, opts = {}) {
   }
 
   function renderAll() {
-    renderHeader(); renderPanel(); renderMeter(); renderBanner(); renderCard(); renderBoard(); renderSchem(); renderComplete();
+    renderHeader(); renderPanel(); renderMeter(); renderTruth(); renderBanner(); renderCard(); renderBoard(); renderSchem(); renderComplete();
   }
 
   // ---------- wiring ----------

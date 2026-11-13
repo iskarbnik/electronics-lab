@@ -132,3 +132,75 @@ test('formatting', () => {
   assert.equal(bands(470).length, 3);
   assert.deepEqual(bands(470), bands(47).slice(0, 2).concat(bands(100)[2]));
 });
+
+// ---------- logic gates ----------
+import { truthTable, gateEval } from '../js/sim/logic.js';
+
+function gateBoard(fn, two = true) {
+  const c = newCircuit();
+  addComp(c, { id: 'WP', type: 'wire', pins: ['BAT+', 'p+1'] });
+  addComp(c, { id: 'WN', type: 'wire', pins: ['BAT-', 'p-1'] });
+  for (const [n, a, b, sw, rp] of [['A', 'p+2', 'c4', 'c2', 'p-4'], ['B', 'p+8', 'c10', 'c8', 'p-10']]) {
+    if (!two && n === 'B') continue;
+    addComp(c, { id: 'W' + n, type: 'wire', pins: [a, 'a' + (n === 'A' ? 2 : 8)] });
+    addComp(c, { id: 'S' + n, type: 'switch', pins: [sw, b] });
+    addComp(c, { id: 'R' + n, type: 'resistor', pins: [rp, 'a' + (n === 'A' ? 4 : 10)], props: { r: 10000 } });
+  }
+  addComp(c, { id: 'G1', type: 'gate', pins: two ? ['j13', 'j14', 'j15'] : ['j13', 'j14'], props: { fn } });
+  addComp(c, { id: 'XA', type: 'wire', pins: ['e4', 'f13'] });
+  if (two) addComp(c, { id: 'XB', type: 'wire', pins: ['e10', 'f14'] });
+  addComp(c, { id: 'XY', type: 'wire', pins: [two ? 'f15' : 'f14', 'e18'] });
+  addComp(c, { id: 'R1', type: 'resistor', pins: ['a18', 'a21'], props: { r: 470 } });
+  addComp(c, { id: 'D1', type: 'led', pins: ['b21', 'b22'], props: { color: 'green' } });
+  addComp(c, { id: 'W3', type: 'wire', pins: ['a22', 'p-22'] });
+  return c;
+}
+const setSw = (c, id, on) => { getComp(c, id).props.on = on; };
+
+test('every gate matches its truth table through the whole circuit', () => {
+  for (const fn of ['and', 'or', 'nand', 'nor', 'xor']) {
+    for (const [[a, b], out] of truthTable(fn)) {
+      const c = gateBoard(fn);
+      setSw(c, 'SA', a); setSw(c, 'SB', b);
+      const s = simulate(c);
+      assert.equal(s.comps.G1.out, out, `${fn}(${+a},${+b})`);
+      assert.equal(s.comps.D1.lit, out, `${fn}(${+a},${+b}) LED`);
+      assert.deepEqual(s.comps.G1.inputs, [a, b]);
+    }
+  }
+});
+
+test('NOT gate inverts, and the battery supplies the LED current', () => {
+  const c = gateBoard('not', false);
+  let s = simulate(c);
+  assert.equal(s.comps.G1.out, true);
+  assert.ok(s.comps.D1.lit);
+  near(s.comps.D1.i, 0.0135, 0.001);
+  assert.ok(s.comps.BAT.i > s.comps.D1.i, 'battery supplies the LED and the pull-down');
+  near(s.comps.G1.v, 8.65, 0.1);
+  setSw(c, 'SA', true);
+  s = simulate(c);
+  assert.equal(s.comps.G1.out, false);
+  assert.ok(!s.comps.D1.lit);
+  near(s.comps.G1.v, 0, 0.01);
+});
+
+test('pull-down gives a low level, and a gate output drives an LED without a resistor into a burn', () => {
+  const c = gateBoard('and');
+  const s = simulate(c);
+  near(voltageBetween(s, 'b4', 'p-12'), 0, 0.01);
+  setSw(c, 'SA', true);
+  near(voltageBetween(simulate(c), 'b4', 'p-12'), 9, 0.05);
+  const d = gateBoard('not', false);
+  getComp(d, 'R1').props.r = 0.01;
+  const r = simulate(d);
+  assert.ok(getComp(d, 'D1').burned);
+  assert.equal(r.events[0].type, 'burn');
+});
+
+test('gate truth tables and evaluation', () => {
+  assert.equal(truthTable('and').length, 4);
+  assert.equal(truthTable('not').length, 2);
+  assert.equal(gateEval('xor', [true, false]), true);
+  assert.equal(gateEval('nor', [false, false]), true);
+});

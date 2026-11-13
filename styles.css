@@ -262,3 +262,25 @@ html[dir="rtl"] .iconbtn.sm { margin: -6px 0 -6px -8px; }
   .cvals span { font-size: .62rem; }
   .cvals .num { font-size: .9rem; }
 }
+
+/* ---------- logic gates ---------- */
+.truthbox { flex: none; z-index: 3; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 6px 12px; background: #0c1117; border-bottom: 1px solid var(--line); direction: inherit; }
+.tnames { font-family: var(--mono); letter-spacing: .1em; margin-inline-start: 4px; color: #c7d0dc; }
+.tchips { display: flex; gap: 6px; flex-wrap: wrap; }
+.tchip { font: 700 .9rem/1 var(--mono); padding: 6px 9px; border-radius: 8px; background: #141b24; color: var(--muted); border: 1px solid var(--line); direction: ltr; }
+.tchip i { font-style: normal; margin: 0 4px; opacity: .6; }
+.tchip.on { background: rgba(255, 178, 36, .16); border-color: var(--amber); color: #fff; }
+.tchip.on.hi b { color: #6ee7a8; }
+.gatebody { fill: #1d2430; stroke: #4b5563; stroke-width: 1.5; }
+.gatetext { fill: #e9eef4; font: 800 11px var(--mono); }
+.gpin { fill: #aab4c0; font: 700 8px var(--mono); }
+.gleg { stroke-width: 2.4; }
+.gleg.hi { stroke: #6ee7a8; }
+.swbody { fill: #2b323c; stroke: #4b5563; stroke-width: 1.5; }
+.swbody.on { fill: #2f5f46; stroke: #6ee7a8; }
+.swknob { fill: #dfe3e8; stroke: #8a929d; stroke-width: 1.5; }
+.swknob.on { fill: #6ee7a8; }
+.gatesym { fill: rgba(199, 208, 220, .06); stroke: #c7d0dc; stroke-width: 2.4; stroke-linejoin: round; }
+.gatesym.hi { fill: rgba(110, 231, 168, .25); stroke: #6ee7a8; }
+.swire.hi { stroke: #6ee7a8; }
+.swire.lo { stroke: #7d8793; }
