@@ -14,6 +14,12 @@ export function fmt(value, unit) {
   }
 }
 
+// Capacitance in microfarads, the way parts are labelled (2200 µF), or farads from 1 F up.
+export function fmtF(c) {
+  if (c >= 1) return `${parseFloat(c.toFixed(2))} F`;
+  return `${parseFloat((c * 1e6).toFixed(c * 1e6 >= 99.95 ? 0 : 1))} µF`;
+}
+
 const COLORS = ['#1b1b1b', '#7a4a21', '#d93a2b', '#f08a24', '#f2d024', '#3f9b47', '#2f6fd0', '#8b4fc1', '#8c8c8c', '#f5f5f5'];
 export const BAND_GOLD = '#c9a227';
 

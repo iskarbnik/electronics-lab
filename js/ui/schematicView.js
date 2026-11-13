@@ -1,5 +1,5 @@
 // Schematic view: standard symbols from the lesson's schematic description (grid unit = 20 px).
-import { fmt } from '../sim/format.js';
+import { fmt, fmtF } from '../sim/format.js';
 import { el, clear, LED_COLORS, FlowLayer } from './svg.js';
 
 const U = 20;
@@ -9,6 +9,7 @@ function valueText(type, comp, plan) {
   if (type === 'battery') return fmt(p.v ?? 9, 'V');
   if (type === 'resistor') return fmt(p.r ?? 470, 'Ω');
   if (type === 'pot') return fmt(p.r ?? 10000, 'Ω');
+  if (type === 'capacitor') return fmtF(p.c ?? 0.001);
   return '';
 }
 
@@ -32,6 +33,14 @@ function symbol(part, comp, plan, sim) {
     g.append(el('path', { d: 'M10 -12V12', class: 'plate' }));
     g.append(el('path', { d: 'M-2 -16L6 -24M-2 -16L1 -16M-2 -16L-2 -19 M6 -16L14 -24M6 -16L9 -16M6 -16L6 -19', class: 'arrows', stroke: hex }));
     if (comp?.burned) g.append(el('path', { d: 'M-8 -8L8 8M8 -8L-8 8', class: 'burnx' }));
+  } else if (t === 'diode') {
+    line('M-40 0H-10'); line('M10 0H40');
+    g.append(el('path', { d: 'M-10 -12V12L10 0Z', class: 'ledtri', fill: '#aab3bf', 'fill-opacity': sim?.comps[part.id]?.conducting ? 0.7 : 0.15, stroke: '#aab3bf' }));
+    g.append(el('path', { d: 'M10 -12V12', class: 'plate' }));
+  } else if (t === 'capacitor') {
+    line('M-40 0H-5'); line('M5 0H40');
+    g.append(el('path', { d: 'M-5 -15V15', class: 'plate long' }), el('path', { d: 'M5 -15V15', class: 'plate long' }));
+    g.append(el('text', { x: -17, y: -10, text: '+', class: 'sch-plus', 'text-anchor': 'middle' }));
   } else if (t === 'button') {
     const pr = !!comp?.props.pressed;
     line('M-40 0H-14'); line('M14 0H40');

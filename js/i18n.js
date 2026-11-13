@@ -49,10 +49,11 @@ const S = {
   'hint.measureBlack': ['Now tap the hole for the black probe (highlighted).', 'עכשיו הקישו על החור של הגשוש השחור (מסומן).'],
   'hint.measureWrong': ['Move the probes to the highlighted strips.', 'העבירו את הגשושים לפסים המסומנים.'],
   'hint.do.select': ['Tap the part to select it.', 'הקישו על הרכיב כדי לבחור בו.'],
-  'hint.do.flip': ['Select the LED and press Flip.', 'בחרו בנורית ולחצו על ״הפוך״.'],
+  'hint.do.flip': ['Select the part and press Flip.', 'בחרו ברכיב ולחצו על ״הפוך״.'],
   'hint.do.remove': ['Select the part and press Remove.', 'בחרו ברכיב ולחצו על ״הסר״.'],
   'hint.do.replace': ['Select the burned LED and press Replace.', 'בחרו בנורית השרופה ולחצו על ״החלף״.'],
   'hint.do.set': ['Select the resistor and pick a value.', 'בחרו בנגד ובחרו ערך.'],
+  'hint.do.wait': ['Keep going and watch the part card or the meter.', 'המשיכו וצפו בכרטיס הרכיב או ברב-מודד.'],
   'hint.do.press': ['Press and hold the button.', 'לחצו והחזיקו את הלחצן.'],
   'hint.do.turn': ['Select the potentiometer and move the slider.', 'בחרו בפוטנציומטר והזיזו את המחוון.'],
   'step.done': ['Done!', 'בוצע!'],
@@ -83,6 +84,11 @@ const S = {
   'part.led': ['LED', 'נורית LED'],
   'part.button': ['Push button', 'לחצן'],
   'part.pot': ['Potentiometer', 'פוטנציומטר'],
+  'part.diode': ['Diode', 'דיודה'],
+  'part.capacitor': ['Capacitor', 'קבל'],
+  'card.conducting': ['Conducting', 'מוליכה'],
+  'card.blocking': ['Blocking', 'חוסמת'],
+  'card.charge': ['Stored voltage', 'מתח אגור'],
   'toast.burn': ['The LED burned out! {i} is far above the 20 mA it can take.', 'הנורית נשרפה! {i} זה הרבה מעל 20 mA שהיא מסוגלת לעמוד בהם.'],
   'banner.short': ['Short circuit! The battery is pushing {i} through almost no resistance. Check your wires.', 'קצר חשמלי! הסוללה דוחפת {i} כמעט בלי התנגדות. בדקו את החוטים.'],
   'complete.title': ['Lesson complete!', 'השיעור הושלם!'],
@@ -133,7 +139,7 @@ export const ltr = s => `<bdi dir="ltr">${s}</bdi>`;
 
 // Wraps every number+unit run ("819 mA", "4.7 kΩ", "1/4 W") in an isolated LTR <bdi>, so it keeps its
 // order inside Hebrew text. Leaves HTML tags, <code> and existing <bdi> content untouched.
-const UNIT_RUN = /((?:(?<![\p{L}\d.\/-])-)?(?<![\w.\/])\d+(?:[.,]\d+)?(?:\/\d+)?)(\s?)(µA|mA|A|µV|mV|V|kΩ|MΩ|Ω|mW|W)(?![A-Za-z0-9µΩ])/gu;
+const UNIT_RUN = /((?:(?<![\p{L}\d.\/-])-)?(?<![\w.\/])\d+(?:[.,]\d+)?(?:\/\d+)?)(\s?)(µA|mA|A|µV|mV|V|kΩ|MΩ|Ω|mW|W|µF|mF|F|s)(?![A-Za-z0-9µΩ])/gu;
 export function bidi(html) {
   if (!html) return html;
   let skip = 0;

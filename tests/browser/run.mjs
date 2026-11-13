@@ -73,7 +73,7 @@ async function playLesson(cfg, lesson) {
   const state = () => page.evaluate(() => ({ step: __elab.player.debug.step, done: !!document.querySelector('.complete:not([hidden])') && getComputedStyle(document.querySelector('.complete')).display !== 'none', nextOn: !document.querySelector('.nx').disabled }));
   // Hebrew only: every number+unit in visible text must sit inside a bdi, code, svg or dir=ltr element.
   const unwrappedUnits = () => page.evaluate(() => {
-    const re = /(?<![\w.\/])-?\d+(?:[.,]\d+)?(?:\/\d+)?\s?(?:µA|mA|A|µV|mV|V|kΩ|MΩ|Ω|mW|W)(?![A-Za-z0-9µΩ])/;
+    const re = /(?<![\w.\/])-?\d+(?:[.,]\d+)?(?:\/\d+)?\s?(?:µA|mA|A|µV|mV|V|kΩ|MΩ|Ω|mW|W|µF|mF|F|s)(?![A-Za-z0-9µΩ])/;
     const bad = [], w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     for (let n; (n = w.nextNode());) {
       const el = n.parentElement;
@@ -108,7 +108,17 @@ async function playLesson(cfg, lesson) {
       else if (s.type === 'measure') { await tapHole(s.red); await tapHole(s.black); }
       else if (s.type === 'do') {
         const q = await toScreen(await compPoint(s.comp));
-        if (s.act === 'press') {
+        if (s.act === 'wait') {
+          // time passes on its own; `drive` names a button to hold meanwhile
+          let cdp;
+          if (s.drive) {
+            const bq = await toScreen(await compPoint(s.drive));
+            if (cfg.touch) { cdp = await ctx.newCDPSession(page); await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [bq] }); }
+            else { await page.mouse.move(bq.x, bq.y); await page.mouse.down(); }
+          }
+          for (let i = 0; i < 100; i++) { if ((await state()).nextOn) break; await wait(100); }
+          if (s.drive) { if (cfg.touch) await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); else await page.mouse.up(); }
+        } else if (s.act === 'press') {
           let cdp;
           if (cfg.touch) { cdp = await ctx.newCDPSession(page); await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [q] }); }
           else { await page.mouse.move(q.x, q.y); await page.mouse.down(); }

@@ -1,6 +1,6 @@
 // Breadboard view: static board drawn once, dynamic layer redrawn on every update, geometry-based input.
 import { COLS, ROW_Y, BOARD, BATTERY, TERMINALS, VIEW, holePos, holesOfStrip, nearestHole, ALL_HOLES, stripOf } from '../sim/board.js';
-import { bands, BAND_GOLD, fmt } from '../sim/format.js';
+import { bands, BAND_GOLD, fmt, fmtF } from '../sim/format.js';
 import { el, clear, LED_COLORS, WIRE_COLORS, FlowLayer, distToSegment } from './svg.js';
 
 const reduceMotion = () => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -284,6 +284,27 @@ export function createBoardView(host, cb = {}) {
         const age = (performance.now() - burnedAt.get(c.id)) / 1000;
         if (age < 3) for (let k = 0; k < 3; k++) grp.append(el('circle', { cx: m.x + (k - 1) * 5, cy: m.y - 12, r: 5, class: 'smoke', style: `animation-delay:${(k * 0.45 - age).toFixed(2)}s` }));
       }
+    } else if (c.type === 'diode') {
+      const [a, b] = ps, d = Math.hypot(b.x - a.x, b.y - a.y), ang = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+      const L = Math.min(30, d - 8), r = el('g', { transform: `translate(${(a.x + b.x) / 2} ${(a.y + b.y) / 2}) rotate(${ang})` });
+      r.append(el('line', { x1: -d / 2, y1: 0, x2: d / 2, y2: 0, class: 'leg' }));
+      r.append(el('rect', { x: -L / 2, y: -6.5, width: L, height: 13, rx: 3, class: 'diodebody' }));
+      r.append(el('rect', { x: L / 2 - 7, y: -6.5, width: 4, height: 13, class: 'diodestripe' }));
+      grp.append(r, plug(a), plug(b));
+    } else if (c.type === 'capacitor') {
+      const [a, b] = ps, m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const ang = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+      const full = Math.max(0, Math.min(1, (st.sim?.v || 0) / 9));
+      grp.append(el('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: 'leg' }));
+      const r = el('g', { transform: `translate(${m.x} ${m.y}) rotate(${ang})` });
+      r.append(el('circle', { cx: 0, cy: 0, r: 15, class: 'capbody' }));
+      r.append(el('path', { d: 'M3 -14.6A15 15 0 0 1 3 14.6L15 0Z', class: 'capstripe', transform: 'translate(0 0)' }));
+      r.append(el('text', { x: -6, y: 4, text: '+', class: 'capsign' }), el('text', { x: 9, y: 4, text: '−', class: 'capsign neg' }));
+      grp.append(r);
+      grp.append(el('rect', { x: m.x - 15, y: m.y + 19, width: 30, height: 4, rx: 2, class: 'capgauge bg' }));
+      grp.append(el('rect', { x: m.x - 15, y: m.y + 19, width: 30 * full, height: 4, rx: 2, class: 'capgauge' }));
+      grp.append(el('text', { x: m.x, y: m.y + 34, text: fmtF(c.props.c), class: 'pottext', 'text-anchor': 'middle' }));
+      grp.append(plug(a), plug(b));
     } else if (c.type === 'button') {
       const [a, b] = ps, m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, pr = !!c.props.pressed;
       grp.append(el('line', { x1: a.x, y1: a.y, x2: m.x, y2: m.y, class: 'leg' }), el('line', { x1: b.x, y1: b.y, x2: m.x, y2: m.y, class: 'leg' }));
@@ -329,7 +350,7 @@ export function createBoardView(host, cb = {}) {
     const items = [];
     for (const c of circuit.comps) {
       const s = sim?.comps[c.id];
-      if (!s || !['wire', 'resistor', 'led', 'button'].includes(c.type)) continue;
+      if (!s || !['wire', 'resistor', 'led', 'button', 'diode', 'capacitor'].includes(c.type)) continue;
       if (c.type === 'button' && !c.props.pressed) continue;
       const [a, b] = pinPos(c);
       items.push({ key: c.id, d: `M${a.x} ${a.y}L${b.x} ${b.y}`, i: s.i });

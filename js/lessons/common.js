@@ -22,9 +22,14 @@ export const select = (comp, text, extra) =>
 export const press = (comp, text, extra) =>
   doStep(comp, 'press', text, () => {}, (sim, c, ui) => !!ui && ui.pressed.has(comp), extra);
 
+// Flips `comp`; done when the LED `extra.watch` (default: the part itself) is lit or dark as wanted.
 export const flip = (comp, wantLit, text, extra) => doStep(comp, 'flip', text,
   c => { const x = getComp(c, comp); if (x) x.pins = [x.pins[1], x.pins[0]]; },
-  sim => !!sim.comps[comp] && !!sim.comps[comp].lit === !!wantLit, extra);
+  sim => { const w = extra?.watch || comp; return !!sim.comps[w] && !!sim.comps[w].lit === !!wantLit; }, extra);
+
+// Time passes in the simulator (capacitors). `auto` jumps the circuit to where the wait would end,
+// `until` says when it has.
+export const wait = (comp, text, auto, until, extra) => doStep(comp, 'wait', text, auto, until, extra);
 
 export const remove = (comp, text, extra) =>
   doStep(comp, 'remove', text, c => removeComp(c, comp), (sim, c) => !getComp(c, comp), extra);

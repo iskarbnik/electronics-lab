@@ -196,6 +196,13 @@ html[dir="rtl"] .iconbtn.sm { margin: -6px 0 -6px -8px; }
 .resbody.hot { fill: #ff7a5c; stroke: #ff3b1f; }
 .hotpulse { animation: pulseop 1s ease-in-out infinite alternate; }
 .anode { fill: #fff; font: 800 12px var(--sans); text-anchor: middle; stroke: #000; stroke-width: .5; paint-order: stroke; }
+.diodebody { fill: #23272d; stroke: #4b5360; stroke-width: 1; }
+.diodestripe { fill: #d5dae1; }
+.capbody { fill: #1d4f91; stroke: #3d6aa6; stroke-width: 1.5; }
+.capstripe { fill: #d5dae1; fill-opacity: .85; }
+.capsign { fill: #fff; font: 800 11px var(--sans); text-anchor: middle; }
+.capsign.neg { fill: #1b1f25; }
+.capgauge { fill: var(--amber); } .capgauge.bg { fill: rgba(255, 255, 255, .15); }
 .btnbody { fill: #2b323c; stroke: #4b5563; stroke-width: 1.5; }
 .btnscrew { fill: #7d8793; }
 .btncap { fill: #dfe3e8; stroke: #8a929d; stroke-width: 1.5; }

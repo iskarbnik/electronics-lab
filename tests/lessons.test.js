@@ -8,10 +8,10 @@ import { holePos } from '../js/sim/board.js';
 const isT = t => t && typeof t.he === 'string' && t.he.trim() && typeof t.en === 'string' && t.en.trim();
 const holesOf = step => (step.pins || []);
 
-test('lesson ids are unique and there are ten', () => {
+test('lesson ids are unique and there are twelve', () => {
   const ids = LESSONS.map(l => l.id);
   assert.equal(new Set(ids).size, ids.length);
-  assert.equal(ids.length, 10);
+  assert.equal(ids.length, 12);
 });
 
 for (const lesson of LESSONS) {

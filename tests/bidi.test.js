@@ -5,7 +5,7 @@ import { bidi } from '../js/i18n.js';
 const w = s => `<bdi dir="ltr">${s}</bdi>`;
 
 test('wraps number+unit runs for all units', () => {
-  for (const u of ['mA', 'A', 'µA', 'V', 'mV', 'Ω', 'kΩ', 'MΩ', 'W', 'mW']) {
+  for (const u of ['mA', 'A', 'µA', 'V', 'mV', 'Ω', 'kΩ', 'MΩ', 'W', 'mW', 'µF', 'mF', 'F', 's']) {
     assert.equal(bidi(`כ-20 ${u} כאן`), `כ-${w(`20 ${u}`)} כאן`);
   }
   assert.equal(bidi('819 mA'), w('819 mA'));

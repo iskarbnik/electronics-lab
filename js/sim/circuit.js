@@ -12,6 +12,9 @@ export const LED_BURN_A = 0.05;      // above this the LED dies
 export const RESISTOR_MAX_W = 0.25;  // quarter watt resistors, as in starter kits
 export const SHORT_A = 1;            // battery current that counts as a short circuit
 const LED_RS = 8;
+const DIODE_RS = 1;
+export const DIODE_VF = 0.7;         // silicon rectifier diode, e.g. 1N4007
+export const CAP_DT = 1e-3;          // time step used when a plain DC solve meets a capacitor
 const WIRE_R = 0.01;
 const BATTERY_R = 0.5;
 const GMIN = 1e-9;
@@ -23,6 +26,8 @@ const DEFAULTS = {
   led: p => ({ color: 'red', vf: LED_VF[p?.color || 'red'] }),
   button: () => ({ pressed: false }),
   pot: () => ({ r: 10000, pos: 0.5 }),
+  diode: () => ({ vf: DIODE_VF }),
+  capacitor: () => ({ c: 0.001, vc: 0 }),   // farads and the volts stored right now (pin0 minus pin1)
 };
 
 export function newCircuit(v = 9) {
@@ -41,7 +46,7 @@ export function usedHoles(c) {
   return s;
 }
 
-function solveOnce(circuit) {
+function solveOnce(circuit, dt) {
   const nodes = new Map();
   const node = hole => {
     const s = stripOf(hole);
@@ -57,7 +62,9 @@ function solveOnce(circuit) {
     else if (c.type === 'wire') add(n[0], n[1], 1 / WIRE_R);
     else if (c.type === 'resistor') add(n[0], n[1], 1 / Math.max(c.props.r, 0.01));
     else if (c.type === 'button') { if (c.props.pressed) add(n[0], n[1], 1 / WIRE_R); }
-    else if (c.type === 'led') { if (!c.burned) add(n[0], n[1], 0, 0, { led: true, on: true }); }
+    else if (c.type === 'led') { if (!c.burned) add(n[0], n[1], 0, 0, { led: true, on: true, rs: LED_RS }); }
+    else if (c.type === 'diode') add(n[0], n[1], 0, 0, { led: true, on: true, rs: DIODE_RS });
+    else if (c.type === 'capacitor') { const g = Math.max(c.props.c, 1e-12) / dt; add(n[0], n[1], g, g * (c.props.vc || 0)); }
     else if (c.type === 'pot') {
       add(n[0], n[1], 1 / Math.max(c.props.r * c.props.pos, 1), 0, { part: 0 });
       add(n[1], n[2], 1 / Math.max(c.props.r * (1 - c.props.pos), 1), 0, { part: 1 });
@@ -71,7 +78,7 @@ function solveOnce(circuit) {
     const b = new Array(N).fill(0);
     for (let k = 0; k < N; k++) A[k][k] = GMIN;
     for (const e of els) {
-      if (e.led) { e.g = e.on ? 1 / LED_RS : GMIN; e.is = e.on ? e.c.props.vf / LED_RS : 0; }
+      if (e.led) { e.g = e.on ? 1 / e.rs : GMIN; e.is = e.on ? e.c.props.vf / e.rs : 0; }
       A[e.a][e.a] += e.g; A[e.b][e.b] += e.g; A[e.a][e.b] -= e.g; A[e.b][e.a] -= e.g;
       b[e.a] += e.is; b[e.b] -= e.is;
     }
@@ -110,6 +117,8 @@ function solveOnce(circuit) {
     }
     if (c.type === 'button' && !c.props.pressed) r.v = V[nodes.get(stripOf(c.pins[0]))] - V[nodes.get(stripOf(c.pins[1]))];
     if (c.type === 'resistor') r.hot = r.p > RESISTOR_MAX_W;
+    if (c.type === 'diode') r.conducting = r.i > 1e-4;
+    if (c.type === 'capacitor') r.charge = (c.props.c || 0) * r.v;
   }
   const nodeV = {};
   for (const [s, k] of nodes) nodeV[s] = V[k];
@@ -118,15 +127,18 @@ function solveOnce(circuit) {
 
 // Simulates the circuit. An LED that gets too much current burns out: this marks it in the
 // circuit itself and reports it in `events`.
-export function simulate(circuit) {
+// Capacitors are solved with backward Euler over `dt` seconds. A plain call only looks at the
+// present state; with `advance: true` the capacitors also move on by `dt` (time passes).
+export function simulate(circuit, { dt = CAP_DT, advance = false } = {}) {
   const events = [];
   let res;
   for (let guard = 0; guard < 10; guard++) {
-    res = solveOnce(circuit);
+    res = solveOnce(circuit, dt);
     const burnt = circuit.comps.filter(c => c.type === 'led' && !c.burned && res.comps[c.id].i > LED_BURN_A);
     if (!burnt.length) break;
     for (const c of burnt) { c.burned = true; events.push({ type: 'burn', id: c.id, i: res.comps[c.id].i }); }
   }
+  if (advance) for (const c of circuit.comps) if (c.type === 'capacitor') c.props.vc = res.comps[c.id].v;
   res.events = events;
   return res;
 }

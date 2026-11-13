@@ -132,3 +132,40 @@ test('formatting', () => {
   assert.equal(bands(470).length, 3);
   assert.deepEqual(bands(470), bands(47).slice(0, 2).concat(bands(100)[2]));
 });
+
+test('diode conducts forward with about 0.7 V and blocks in reverse', () => {
+  const c = newCircuit();
+  addComp(c, { id: 'WP', type: 'wire', pins: ['BAT+', 'p+1'] });
+  addComp(c, { id: 'WN', type: 'wire', pins: ['BAT-', 'p-1'] });
+  addComp(c, { id: 'W1', type: 'wire', pins: ['p+3', 'a3'] });
+  addComp(c, { id: 'D2', type: 'diode', pins: ['c3', 'd5'] });
+  addComp(c, { id: 'R1', type: 'resistor', pins: ['c5', 'c9'], props: { r: 470 } });
+  addComp(c, { id: 'W2', type: 'wire', pins: ['a9', 'p-9'] });
+  let s = simulate(c);
+  near(s.comps.D2.v, 0.72, 0.05);
+  near(s.comps.R1.i, (9 - 0.7) / 470, 0.001);
+  assert.ok(s.comps.D2.conducting);
+  getComp(c, 'D2').pins.reverse();
+  s = simulate(c);
+  assert.ok(Math.abs(s.comps.R1.i) < 1e-6);
+  assert.ok(!s.comps.D2.conducting);
+  near(s.comps.D2.v, -9, 0.01);
+});
+
+test('capacitor charges through a resistor along 1 - exp(-t/RC)', () => {
+  const c = newCircuit();
+  addComp(c, { id: 'WP', type: 'wire', pins: ['BAT+', 'p+1'] });
+  addComp(c, { id: 'WN', type: 'wire', pins: ['BAT-', 'p-1'] });
+  addComp(c, { id: 'W1', type: 'wire', pins: ['p+3', 'a3'] });
+  addComp(c, { id: 'R1', type: 'resistor', pins: ['c3', 'c9'], props: { r: 1000 } });
+  addComp(c, { id: 'C1', type: 'capacitor', pins: ['d9', 'd10'], props: { c: 0.001 } });
+  addComp(c, { id: 'W2', type: 'wire', pins: ['a10', 'p-10'] });
+  assert.equal(simulate(c).comps.C1.v < 0.1, true);
+  assert.equal(getComp(c, 'C1').props.vc, 0, 'plain simulate does not move time');
+  let s;
+  for (let k = 0; k < 20; k++) s = simulate(c, { dt: 0.05, advance: true });   // 1 s = one time constant
+  near(s.comps.C1.v, 9 * (1 - Math.exp(-1)), 0.2);
+  for (let k = 0; k < 100; k++) s = simulate(c, { dt: 0.05, advance: true });
+  near(s.comps.C1.v, 9, 0.05);
+  assert.ok(Math.abs(s.comps.C1.i) < 1e-4, 'no current once full');
+});

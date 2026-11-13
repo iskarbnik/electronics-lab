@@ -1,7 +1,7 @@
 // The lesson player: owns the circuit, the step state machine and the DOM of the lesson screen.
 import { COLS, TERMINALS, VIEW, stripOf, holesOfStrip, holePos, parseHole, nearestHole } from '../sim/board.js';
 import { simulate, usedHoles, getComp, clone, addComp, removeComp, voltageBetween } from '../sim/circuit.js';
-import { fmt } from '../sim/format.js';
+import { fmt, fmtF } from '../sim/format.js';
 import { buildCircuit } from '../lessons/engine.js';
 import { t, L, ltr, bidi, getLang, onLang } from '../i18n.js';
 import * as store from '../store.js';
@@ -344,6 +344,7 @@ export function mountLesson(root, lesson, opts = {}) {
     if (c.type === 'resistor') return fmt(c.props.r, 'Ω');
     if (c.type === 'battery') return fmt(c.props.v, 'V');
     if (c.type === 'pot') return fmt(c.props.r, 'Ω');
+    if (c.type === 'capacitor') return fmtF(c.props.c);
     return '';
   }
   function renderCard() {
@@ -360,6 +361,7 @@ export function mountLesson(root, lesson, opts = {}) {
     let status = '', bad = false;
     if (c.type === 'resistor' && st.hot) { status = t('card.hot'); bad = true; }
     else if (c.type === 'led') { status = c.burned ? t('card.burned') : st.lit ? t('card.lit') : t('card.off'); bad = c.burned; }
+    else if (c.type === 'diode') status = st.conducting ? t('card.conducting') : t('card.blocking');
     else if (c.type === 'button') status = c.props.pressed ? t('card.pressed') : t('card.released');
     R.status.innerHTML = bidi(status); R.status.className = 'cstatus' + (bad ? ' bad' : '') + (status ? '' : ' empty');
     if (R.chips) R.chips.forEach(([b, v]) => b.classList.toggle('on', c.props.r === v));
@@ -401,7 +403,7 @@ export function mountLesson(root, lesson, opts = {}) {
     }
     const row2 = h('div', 'btnrow');
     const mkBtn = (label, enabled, fn, cls = '') => { const b = h('button', 'btn small ' + cls, label); b.type = 'button'; b.disabled = !enabled; b.addEventListener('click', fn); row2.append(b); };
-    if (c.type === 'led') mkBtn(t('card.flip'), flags.flip, () => { const cc = getComp(circuit, c.id); if (cc) { cc.pins = [cc.pins[1], cc.pins[0]]; recalc(); } });
+    if (c.type === 'led' || c.type === 'diode') mkBtn(t('card.flip'), flags.flip, () => { const cc = getComp(circuit, c.id); if (cc) { cc.pins = [cc.pins[1], cc.pins[0]]; recalc(); } });
     if (c.burned) mkBtn(t('card.replace'), true, () => { const cc = getComp(circuit, c.id); if (cc) { cc.burned = false; recalc(); } }, 'primary');
     if (c.type !== 'battery' && c.type !== 'wire' || flags.remove) mkBtn(t('card.remove'), flags.remove, () => { removeComp(circuit, c.id); selection = null; recalc(); }, 'danger');
     if (row2.children.length) ctl.append(row2);
@@ -435,11 +437,23 @@ export function mountLesson(root, lesson, opts = {}) {
   });
   const off = onLang(() => { cardKey = ''; renderAll(); });
 
+  // Time passes only when a capacitor is on the board: every tick moves the capacitors on by real time.
+  const TICK_MS = 50;
+  const tick = setInterval(() => {
+    if (complete || document.hidden || !circuit.comps.some(c => c.type === 'capacitor')) return;
+    sim = simulate(circuit, { dt: TICK_MS / 1000, advance: true });
+    for (const ev of sim.events) toast(t('toast.burn', { i: ltr(fmt(ev.i, 'A')) }));
+    evalDone();
+    renderBoard(); renderSchem(); renderMeter(); renderCard();
+    E.nx.disabled = !stepDone(); E.nx.classList.toggle('ready', stepDone());
+    const hint = cur().type === 'do' && done && !E.hint.classList.contains('ok'); if (hint) renderPanel();
+  }, TICK_MS);
+
   const startStep = store.isDone(lesson.id) ? 0 : Math.min(store.getStep(lesson.id), steps.length - 1);
   enter(startStep);
 
   return {
-    destroy() { clearTimeout(advanceTimer); clearTimeout(toastTimer); off(); board.destroy(); schem?.destroy(); rootEl.remove(); },
+    destroy() { clearInterval(tick); clearTimeout(advanceTimer); clearTimeout(toastTimer); off(); board.destroy(); schem?.destroy(); rootEl.remove(); },
     // for tests and automation
     debug: { get step() { return stepIdx; }, get circuit() { return circuit; }, get sim() { return sim; } },
   };
