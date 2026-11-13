@@ -18,7 +18,9 @@ export function symbol(part, comp, plan, sim) {
   const g = el('g', { class: 'sym' });
   const line = (d, cls = '') => g.append(el('path', { d, class: 'wirep ' + cls }));
   const t = part.type;
-  if (t === 'battery') {
+  if (t === 'wire') {
+    line('M-40 0H40');
+  } else if (t === 'battery') {
     line('M-40 0H-6'); line('M6 0H40');
     g.append(el('path', { d: 'M-6 -17V17', class: 'plate long' }), el('path', { d: 'M6 -9V9', class: 'plate short' }));
     g.append(el('text', { x: -17, y: -10, text: '+', class: 'sch-plus', 'text-anchor': 'middle' }));
