@@ -56,7 +56,7 @@ const hitButtonBody = (circuit, x, y) => {
 };
 
 // ---------- static layer ----------
-function buildStatic(g) {
+function buildStatic(g, withBattery = true) {
   const hole = (x, y) => el('rect', { x: x - 4, y: y - 4, width: 8, height: 8, rx: 1.5, class: 'hole' });
   g.append(el('rect', { x: BOARD.x, y: BOARD.y, width: BOARD.w, height: BOARD.h, rx: 12, class: 'board' }));
   g.append(el('rect', { x: 12, y: 176, width: BOARD.w - 24, height: 8, rx: 3, class: 'groove' }));
@@ -72,6 +72,7 @@ function buildStatic(g) {
     const x = holePos('a' + c).x;
     lab(x, 68, c); lab(x, 300, c);
   }
+  if (!withBattery) return;
   // battery
   const B = BATTERY;
   g.append(el('path', { d: `M-125 ${B.y} V10 H-40`, class: 'lead red' }));
@@ -107,7 +108,7 @@ export function createBoardView(host, cb = {}) {
   svg.append(defs);
   const gStatic = el('g'), gBelow = el('g'), gComps = el('g'), gFlowG = el('g'), gTop = el('g');
   svg.append(gStatic, gBelow, gComps, gFlowG, gTop);
-  buildStatic(gStatic);
+  buildStatic(gStatic, !cb.noBattery);
   host.append(svg);
   const flow = new FlowLayer(gFlowG);
   let model = null;
@@ -284,6 +285,16 @@ export function createBoardView(host, cb = {}) {
         const age = (performance.now() - burnedAt.get(c.id)) / 1000;
         if (age < 3) for (let k = 0; k < 3; k++) grp.append(el('circle', { cx: m.x + (k - 1) * 5, cy: m.y - 12, r: 5, class: 'smoke', style: `animation-delay:${(k * 0.45 - age).toFixed(2)}s` }));
       }
+    } else if (c.type === 'uno') {
+      c.pins.forEach((_, k) => {
+        const p = ps[k], name = c.props.names[k], pv = st.sim?.pins?.[name];
+        const hi = pv && pv.v > 2.5 && name !== '5V';
+        const col = name === '5V' ? '#e0473b' : name === 'GND' ? '#c9ced6' : '#4aa3ff';
+        grp.append(el('line', { x1: p.x, y1: p.y, x2: p.x, y2: p.y - 16, stroke: col, 'stroke-width': 2.6, 'stroke-linecap': 'round' }));
+        grp.append(el('rect', { x: p.x - 14, y: p.y - 34, width: 28, height: 17, rx: 4, class: 'unotag' + (hi ? ' hi' : '') }));
+        grp.append(el('text', { x: p.x, y: p.y - 21.5, text: name, class: 'unotext', 'text-anchor': 'middle' }));
+        grp.append(plug(p));
+      });
     } else if (c.type === 'diode') {
       const [a, b] = ps, d = Math.hypot(b.x - a.x, b.y - a.y), ang = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
       const L = Math.min(30, d - 8), r = el('g', { transform: `translate(${(a.x + b.x) / 2} ${(a.y + b.y) / 2}) rotate(${ang})` });

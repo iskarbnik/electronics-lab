@@ -2,14 +2,16 @@
 import { initLang, setLang, getLang, onLang, t, L, ltr } from './i18n.js';
 import * as store from './store.js';
 import { mountLesson } from './ui/lessonPlayer.js';
+import { mountArduinoLab } from './ui/arduinoLab.js';
 
 const app = document.getElementById('app');
 let LESSONS = [];
 let player = null;
+let lab = null;
 let loadError = false;
 
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const SOON = ['soon.parts', 'soon.scope', 'soon.enc', 'soon.logic', 'soon.arduino', 'soon.sandbox', 'soon.esp'];
+const SOON = ['soon.parts', 'soon.scope', 'soon.enc', 'soon.logic', 'soon.sandbox', 'soon.esp'];
 
 function langSwitch() {
   const cur = getLang();
@@ -40,6 +42,10 @@ function renderHome() {
       <div class="pbar big" role="progressbar" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${n}"><i style="width:${total ? n / total * 100 : 0}%"></i></div></div>
     <h2>${esc(t('home.unit1'))}</h2>
     ${loadError ? `<p class="err">${esc(t('lesson.loadError'))}</p>` : `<ol class="lessons">${rows}</ol>`}
+    <h2>${esc(t('home.unit4'))}</h2>
+    <ol class="lessons"><li><a class="lrow" href="#/arduino">
+      <span class="num"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7L3 12l5 5M16 7l5 5-5 5M14 5l-4 14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      <span class="lbody"><b>${esc(t('ard.title'))}</b><span>${esc(t('home.arduino'))}</span></span></a></li></ol>
     <h2 class="dim">${esc(t('home.next'))}</h2>
     <ul class="soon">${SOON.map(k => `<li>${esc(t(k))}</li>`).join('')}</ul>
     <button class="btn ghost reset" type="button">${esc(t('home.reset'))}</button>
@@ -64,6 +70,14 @@ function confirmReset() {
 
 function route() {
   if (player) { player.destroy(); player = null; }
+  if (lab) { lab.destroy(); lab = null; }
+  if (location.hash === '#/arduino') {
+    document.body.classList.remove('in-lesson');
+    app.innerHTML = ''; window.scrollTo(0, 0);
+    document.title = `${t('ard.title')} | ${t('app.name')}`;
+    lab = mountArduinoLab(app, { onHome: () => { location.hash = '#/'; } });
+    return;
+  }
   const m = /^#\/lesson\/([\w-]+)/.exec(location.hash);
   document.body.classList.toggle('in-lesson', !!m);
   if (!m) { app.innerHTML = ''; window.scrollTo(0, 0); return renderHome(); }
@@ -79,7 +93,8 @@ function route() {
 }
 
 onLang(() => {
-  if (!player) renderHome();
+  if (lab) document.title = `${t('ard.title')} | ${t('app.name')}`;
+  else if (!player) renderHome();
   else { const l = LESSONS.find(x => location.hash.endsWith(x.id)); if (l) document.title = `${L(l.title)} | ${t('app.name')}`; }
 });
 
@@ -90,5 +105,5 @@ async function start() {
   route();
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
 }
-window.__elab = { get player() { return player; } };
+window.__elab = { get player() { return player; }, get lab() { return lab; } };
 start();

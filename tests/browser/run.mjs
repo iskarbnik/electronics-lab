@@ -192,9 +192,65 @@ async function offlineCheck() {
   finally { await ctx.close(); }
 }
 
+// The Arduino lab: run Blink, a syntax error, the button example and the serial monitor.
+async function labCheck(cfg) {
+  const label = `${cfg.name}/arduino-lab`;
+  const ctx = await browser.newContext(cfg.ctx);
+  const page = await ctx.newPage();
+  const problems = [];
+  page.on('console', m => { if (['error', 'warning'].includes(m.type())) problems.push(`console ${m.type()}: ${m.text()}`); });
+  page.on('pageerror', e => problems.push(`pageerror: ${e.message}`));
+  const wait = ms => page.waitForTimeout(ms);
+  const lit = id => page.evaluate(id => __elab.lab.debug.board.sim.comps[id].lit, id);
+  try {
+    await page.goto(BASE); await page.waitForSelector('.lrow');
+    await page.click('a[href="#/arduino"]'); await page.waitForSelector('.lab .code');
+    const hscroll = () => page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
+    if (await hscroll()) throw new Error('horizontal scroll');
+    if (cfg.lang === 'he') {
+      const bad = await page.evaluate(() => {
+        const re = /(?<![\w.\/])-?\d+(?:[.,]\d+)?\s?(?:µA|mA|A|µV|mV|V|kΩ|MΩ|Ω|mW|W|µF|mF|F|s)(?![A-Za-z0-9µΩ])/, out = [];
+        const w = document.createTreeWalker(document.querySelector('.lab'), NodeFilter.SHOW_TEXT);
+        for (let n; (n = w.nextNode());) { const e = n.parentElement; if (!e || e.closest('bdi,code,svg,textarea,pre,[dir=ltr]')) continue; const m = re.exec(n.nodeValue); if (m) out.push(m[0]); }
+        return out;
+      });
+      if (bad.length) throw new Error('units outside a bidi run: ' + bad.join(', '));
+    }
+    // Blink (the default sketch): L1 goes on and off
+    await page.click('.run');
+    const seen = new Set();
+    for (let i = 0; i < 30 && seen.size < 2; i++) { await wait(100); seen.add(await lit('L1')); }
+    if (seen.size < 2) throw new Error('Blink did not toggle L1');
+    await page.click('.stop');
+    if (await lit('L1')) throw new Error('L1 still lit after Stop');
+    // syntax error shows a message with a line number
+    await page.evaluate(() => { __elab.lab.debug.code = 'void setup() { int x = ; } void loop() {}'; });
+    await page.click('.run');
+    if (!(await page.$('.labstatus.bad'))) throw new Error('no error shown for a syntax error');
+    // button example: holding the button lights L2
+    await page.selectOption('.exsel', 'button');
+    await page.click('.run'); await wait(150);
+    if (await lit('L2')) throw new Error('L2 lit without the button');
+    await page.evaluate(() => { const c = __elab.lab.debug.board.circuit.comps.find(c => c.id === 'S1'); c.props.pressed = true; __elab.lab.debug.board.dirty = true; });
+    await wait(200);
+    if (!(await lit('L2'))) throw new Error('L2 not lit while the button is pressed');
+    // pot example prints to the serial monitor
+    await page.selectOption('.exsel', 'pot');
+    await page.click('.run'); await wait(500);
+    const mon = await page.textContent('.mon');
+    if (!/A0 = \d+/.test(mon)) throw new Error('serial monitor empty: ' + JSON.stringify(mon));
+    if (await hscroll()) throw new Error('horizontal scroll while running');
+    await page.click('.stop');
+    if (problems.length) throw new Error(problems.join(' | '));
+    console.log(`  ok   ${label}`);
+  } catch (e) { fail(label, e.message.split('\n')[0]); await shot(page, label); }
+  finally { await ctx.close(); }
+}
+
 for (const cfg of CONFIGS) {
   console.log(cfg.name);
   for (const lesson of LESSONS) await playLesson(cfg, lesson);
+  await labCheck(cfg);
 }
 console.log('offline');
 await offlineCheck();

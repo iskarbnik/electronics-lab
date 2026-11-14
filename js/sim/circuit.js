@@ -10,6 +10,10 @@ export const LED_VF = { red: 2.0, yellow: 2.1, green: 2.2, blue: 3.0, white: 3.0
 export const LED_NOMINAL_A = 0.02;   // comfortable LED current
 export const LED_BURN_A = 0.05;      // above this the LED dies
 export const RESISTOR_MAX_W = 0.25;  // quarter watt resistors, as in starter kits
+export const UNO_VCC = 5;
+export const UNO_PIN_MAX_A = 0.04;   // an Arduino pin is rated for 40 mA
+const UNO_OUT_R = 25;                // output pin drive resistance
+const UNO_PULLUP_R = 20000;
 export const SHORT_A = 1;            // battery current that counts as a short circuit
 const LED_RS = 8;
 const DIODE_RS = 1;
@@ -27,7 +31,8 @@ const DEFAULTS = {
   button: () => ({ pressed: false }),
   pot: () => ({ r: 10000, pos: 0.5 }),
   diode: () => ({ vf: DIODE_VF }),
-  capacitor: () => ({ c: 0.001, vc: 0 }),   // farads and the volts stored right now (pin0 minus pin1)
+  capacitor: () => ({ c: 0.001, vc: 0 }),
+  uno: () => ({ names: [], io: {} }),       // pins[k] is the hole of Arduino pin names[k]; io[name] = { mode, level }   // farads and the volts stored right now (pin0 minus pin1)
 };
 
 export function newCircuit(v = 9) {
@@ -64,6 +69,15 @@ function solveOnce(circuit, dt) {
     else if (c.type === 'button') { if (c.props.pressed) add(n[0], n[1], 1 / WIRE_R); }
     else if (c.type === 'led') { if (!c.burned) add(n[0], n[1], 0, 0, { led: true, on: true, rs: LED_RS }); }
     else if (c.type === 'diode') add(n[0], n[1], 0, 0, { led: true, on: true, rs: DIODE_RS });
+    else if (c.type === 'uno') {
+      c.pins.forEach((_, k) => {
+        const name = c.props.names[k], st = c.props.io[name] || { mode: 0, level: 0 };
+        if (name === '5V') add(n[k], ground, 1, UNO_VCC, { pin: name });
+        else if (name === 'GND') add(n[k], ground, 100, 0, { pin: name });
+        else if (st.mode === 1) add(n[k], ground, 1 / UNO_OUT_R, st.level / UNO_OUT_R, { pin: name });
+        else if (st.mode === 2) add(n[k], ground, 1 / UNO_PULLUP_R, UNO_VCC / UNO_PULLUP_R, { pin: name });
+      });
+    }
     else if (c.type === 'capacitor') { const g = Math.max(c.props.c, 1e-12) / dt; add(n[0], n[1], g, g * (c.props.vc || 0)); }
     else if (c.type === 'pot') {
       add(n[0], n[1], 1 / Math.max(c.props.r * c.props.pos, 1), 0, { part: 0 });
@@ -101,6 +115,7 @@ function solveOnce(circuit, dt) {
     const dv = V[e.a] - V[e.b];
     let i = e.g * dv - e.is;
     if (e.led && !e.on) i = 0;
+    if (e.c.type === 'uno') { (r.pins ||= {})[e.pin] = { v: dv, i }; continue; }
     if (e.c.type === 'battery') { r.v = dv; r.i = -i; r.p = dv * -i; }
     else if (e.c.type === 'pot') {
       if (e.part === 0) { r.v = dv; r.i = i; }
@@ -117,6 +132,14 @@ function solveOnce(circuit, dt) {
     }
     if (c.type === 'button' && !c.props.pressed) r.v = V[nodes.get(stripOf(c.pins[0]))] - V[nodes.get(stripOf(c.pins[1]))];
     if (c.type === 'resistor') r.hot = r.p > RESISTOR_MAX_W;
+    if (c.type === 'uno') {
+      r.pins ||= {};
+      c.pins.forEach((h, k) => {
+        const name = c.props.names[k], v = V[nodes.get(stripOf(h))];
+        r.pins[name] = { ...(r.pins[name] || { i: 0 }), v };
+        r.pins[name].over = Math.abs(r.pins[name].i) > UNO_PIN_MAX_A && name !== '5V' && name !== 'GND';
+      });
+    }
     if (c.type === 'diode') r.conducting = r.i > 1e-4;
     if (c.type === 'capacitor') r.charge = (c.props.c || 0) * r.v;
   }

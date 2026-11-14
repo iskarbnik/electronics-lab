@@ -1,6 +1,6 @@
 // Service worker: precache the app shell, then network first with cache fallback.
 // Bump VERSION whenever any app file changes so old caches are dropped.
-const VERSION = 'elab-v3';
+const VERSION = 'elab-v4';
 const FILES = [
   './',
   'index.html',
@@ -13,6 +13,11 @@ const FILES = [
   'js/ui/schematicView.js',
   'js/ui/lessonPlayer.js',
   'js/ui/svg.js',
+  'js/ui/arduinoLab.js',
+  'js/arduino/parser.js',
+  'js/arduino/interp.js',
+  'js/arduino/kit.js',
+  'js/arduino/examples.js',
   'js/sim/board.js',
   'js/sim/circuit.js',
   'js/sim/format.js',
