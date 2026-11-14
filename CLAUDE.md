@@ -18,6 +18,7 @@ Bilingual (Hebrew RTL + English) installable PWA that teaches electronics on a l
 - Burn rule: an LED over 50 mA is marked `burned` and stays dead until replaced. A resistor over 1/4 W is flagged `hot`.
 
 ## Rules
+- HARD RULE: always write in plain English. Use short, simple words, and explain any technical term the first time you use it. This applies to every reply, commit message and PR description, in every session.
 - No build step, no npm dependencies, no framework. All URLs relative.
 - Every user-facing string exists in both Hebrew and English.
 - Any value with a unit (mA, V, kΩ, W...) shown in Hebrew goes through `bidi()` from `js/i18n.js` (it wraps runs in `<bdi dir="ltr">`; the lesson player already applies it to lesson text, quiz options, hints and toasts) or `ltr()` for values built in code. Never concatenate a unit before a number.
