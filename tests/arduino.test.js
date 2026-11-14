@@ -128,3 +128,100 @@ test('kit: runtime errors stop the sketch with a code', () => {
   assert.equal(r.error.code, 'undefFn');
   assert.equal(r.error.name, 'nope');
 });
+
+import { ARDUINO_LESSONS } from '../js/arduino/lessons.js';
+import { newLabCircuit, unoHole } from '../js/arduino/kit.js';
+import { addComp } from '../js/sim/circuit.js';
+
+test('serial input: available, read, parseInt, readStringUntil, and chars print as characters', () => {
+  const board = new KitBoard();
+  const r = new Runner(`char c; int n; String s;
+    void setup() { Serial.begin(9600); }
+    void loop() {
+      if (Serial.available() > 0) {
+        c = Serial.read(); Serial.print(c); Serial.print(c + 1); Serial.print(' '); Serial.print((int)c);
+        n = Serial.parseInt(); Serial.print(" n="); Serial.print(n);
+        s = Serial.readStringUntil('\\n'); Serial.print(" s="); Serial.println(s);
+      }
+    }`, board);
+  board.send('a42xyz\n');
+  for (let t = 0; t < 200; t += 20) r.step(t);
+  assert.equal(r.error, null);
+  assert.equal(board.out, 'a98 97 n=42 s=xyz\n');
+  assert.equal(board.inbuf, '');
+  // nothing to read: read() is -1 and parseInt() is 0
+  const b2 = new KitBoard();
+  const r2 = new Runner('void setup() { Serial.println(Serial.read()); Serial.println(Serial.available()); Serial.println(Serial.parseInt()); } void loop() { delay(1000); }', b2);
+  r2.step(0);
+  assert.equal(b2.out, '-1\n0\n0\n');
+});
+
+test('PWM through an RC filter gives the average voltage; without a capacitor the LED gets the duty-weighted current', () => {
+  const c = newLabCircuit(false);
+  const add = (id, type, pins, props) => addComp(c, { id, type, pins, props });
+  add('J', 'wire', ['i12', 'a5'], {});          // D9 is on column 12
+  add('R1', 'resistor', ['c5', 'c8'], { r: 1000 });
+  add('C1', 'capacitor', ['d8', 'd9'], { c: 0.0001 });   // tau = 0.1 s
+  add('G', 'wire', ['a9', 'p-9'], {}); add('G2', 'wire', ['i7', 'p-6'], {});
+  const board = new KitBoard(c);
+  const r = new Runner('void setup(){ analogWrite(9, 128); } void loop(){ delay(1000); }', board);
+  r.step(0);
+  for (let k = 0; k < 120; k++) board.advance(1 / 60);       // 2 s, 20 time constants
+  near(board.sim.comps.C1.v, 5 * 128 / 255, 0.2);
+  function near(a, b, tol) { assert.ok(Math.abs(a - b) <= tol, `${a} vs ${b}`); }
+  // the real board: green LED L3 brightness scales with duty
+  const k1 = kitRun('void setup(){ analogWrite(9, 255); } void loop(){ delay(1000); }', 60).board.sim.comps.L3.brightness;
+  const k2 = kitRun('void setup(){ analogWrite(9, 64); } void loop(){ delay(1000); }', 60).board.sim.comps.L3.brightness;
+  near(k2 / k1, 64 / 255, 0.08);
+});
+
+test('pins without PWM only go high or low on analogWrite', () => {
+  const { board } = kitRun('void setup(){ analogWrite(8, 200); } void loop(){ delay(1000); }', 60);
+  assert.equal(board.sim.comps.L2.lit, true);
+  const low = kitRun('void setup(){ analogWrite(8, 100); } void loop(){ delay(1000); }', 60).board;
+  assert.equal(low.sim.comps.L2.lit, false);
+});
+
+test('Uno pins are on the bottom header and the bare Uno has nothing else', () => {
+  const c = newLabCircuit(false);
+  assert.deepEqual(c.comps.map(x => x.id), ['UNO']);
+  assert.equal(unoHole('5V'), 'j6');
+  assert.equal(unoHole('A5'), 'j25');
+});
+
+test('guided Arduino lessons are well formed and can be completed', () => {
+  const isT = x => x && x.he?.trim() && x.en?.trim();
+  assert.ok(ARDUINO_LESSONS.length >= 6);
+  assert.equal(new Set(ARDUINO_LESSONS.map(l => l.id)).size, ARDUINO_LESSONS.length);
+  for (const lesson of ARDUINO_LESSONS) {
+    assert.ok(isT(lesson.title) && isT(lesson.summary), lesson.id);
+    const board = new KitBoard(lesson.circuit === 'empty' ? newLabCircuit(false) : newKit());
+    let code = '';
+    const ctxFor = runner => ({ board, runner, code, out: board.out, running: !!runner && !runner.error && !runner.finished, stats: board.stats });
+    lesson.steps.forEach((s, i) => {
+      const label = `${lesson.id} step ${i}`;
+      assert.ok(isT(s.text), label);
+      for (const x of [s.text, s.why, ...(s.options || []), ...(s.code ? [s.code] : [])].filter(Boolean)) assert.ok(!/[—–]/.test(x.he + x.en), `${label} has a dash`);
+      if (s.type === 'quiz') { assert.ok(s.answer >= 0 && s.answer < s.options.length && isT(s.why), label); s.options.forEach(o => assert.ok(isT(o), label)); }
+      if (s.type === 'build') { s.demo(board); assert.ok(s.goal(ctxFor(null)), label + ' build goal'); }
+      if (s.type === 'code') {
+        if (s.code) { assert.ok(isT(s.code), label); code = s.code.en; }
+        const api = { setCode: v => { code = v; }, code: () => code };
+        board.resetPins();
+        s.demo?.(board, 0, api);
+        const runner = new Runner(code, board);
+        assert.equal(s.goal(ctxFor(runner)), false, label + ' goal already true at start');
+        let ok = false;
+        for (let t = 0; t <= 8000 && !ok; t += 20) {
+          if (t > 0) s.demo?.(board, t, api);
+          runner.step(t);
+          assert.equal(runner.error, null, label);
+          if (board.dirty) board.refresh();
+          board.observe(20);
+          ok = !!s.goal(ctxFor(runner));
+        }
+        assert.ok(ok, label + ' goal never reached');
+      }
+    });
+  }
+});

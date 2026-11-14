@@ -44,7 +44,7 @@ export function lex(src) {
       let j = i + 1, s = '';
       if (src[j] === '\\') { j++; s = { n: '\n', t: '\t', r: '\r', 0: '\0' }[src[j]] ?? src[j]; j++; } else { s = src[j]; j++; }
       if (src[j] !== "'") throw err('string', line);
-      toks.push({ t: 'num', v: s.charCodeAt(0), fl: false, line }); i = j + 1; continue;
+      toks.push({ t: 'num', v: s.charCodeAt(0), fl: false, ch: true, line }); i = j + 1; continue;
     }
     const op = OPS.find(o => src.startsWith(o, i));
     if (!op) throw err('char', line, c);
@@ -64,7 +64,7 @@ export function typeOf(words) {
   let bits = 16;
   if (w.has('long') || w.has('uint32_t') || w.has('int32_t') || w.has('size_t')) bits = 32;
   if (w.has('byte') || w.has('char') || w.has('uint8_t') || w.has('int8_t')) bits = 8;
-  return { kind: 'int', bits, signed: !uns };
+  return { kind: 'int', bits, signed: !uns, char: w.has('char') && !uns };
 }
 
 const BIN = { '||': 1, '&&': 2, '|': 3, '^': 4, '&': 5, '==': 6, '!=': 6, '<': 7, '>': 7, '<=': 7, '>=': 7, '<<': 8, '>>': 8, '+': 9, '-': 9, '*': 10, '/': 10, '%': 10 };
@@ -88,7 +88,7 @@ export function parse(src) {
   function primary() {
     const t = peek();
     if (!t) throw err('eof', line());
-    if (t.t === 'num') { p++; return { k: 'num', v: t.v, fl: t.fl }; }
+    if (t.t === 'num') { p++; return { k: 'num', v: t.v, fl: t.fl, ch: !!t.ch }; }
     if (t.t === 'str') { p++; return { k: 'str', v: t.v }; }
     if (accept('(')) { const e = expr(); expect(')'); return e; }
     if (t.t === 'id') {

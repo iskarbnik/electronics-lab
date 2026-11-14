@@ -241,6 +241,34 @@ async function labCheck(cfg) {
     if (!/A0 = \d+/.test(mon)) throw new Error('serial monitor empty: ' + JSON.stringify(mon));
     if (await hscroll()) throw new Error('horizontal scroll while running');
     await page.click('.stop');
+    // serial input: send 1 and the LED on pin 13 lights
+    await page.evaluate(() => { __elab.lab.debug.code = 'void setup(){ Serial.begin(9600); pinMode(13, OUTPUT); } void loop(){ if (Serial.available() > 0) { char c = Serial.read(); if (c == \'1\') digitalWrite(13, HIGH); if (c == \'0\') digitalWrite(13, LOW); Serial.println(c); } }'; });
+    await page.click('.run'); await wait(100);
+    await page.fill('.serline', '1'); await page.press('.serline', 'Enter'); await wait(250);
+    if (!(await lit('L1'))) throw new Error('serial input did not light L1');
+    if (!/1/.test(await page.textContent('.mon'))) throw new Error('echo missing from the serial monitor');
+    await page.click('.stop');
+    // wiring by hand: a guided lesson on a bare Uno, built with taps
+    await page.goto(`${BASE}#/arduino/a07-wire-it`); await page.waitForSelector('.guide .gnext');
+    await page.click('.gnext'); await wait(200);
+    const toScreen = ([x, y]) => page.evaluate(([x, y]) => { const q = new DOMPoint(x, y).matrixTransform(document.querySelector('.boardsvg').getScreenCTM()); return { x: q.x, y: q.y }; }, [x, y]);
+    const tapHole = async id => { const hp = holePos(id); const p = await toScreen([hp.x, hp.y]); if (cfg.touch) await page.touchscreen.tap(p.x, p.y); else await page.mouse.click(p.x, p.y); await wait(80); };
+    const pick = async name => page.click(`.tool >> text="${name}"`);
+    const tr = k => STRINGS[k][cfg.lang === 'he' ? 1 : 0];
+    await pick(tr('part.wire')); await tapHole('i9'); await tapHole('a5');
+    await pick(tr('part.resistor')); await tapHole('c5'); await tapHole('c8');
+    await pick(tr('part.led')); await tapHole('d8'); await tapHole('d9');
+    await pick(tr('part.wire')); await tapHole('a9'); await tapHole('p-9');
+    await tapHole('i7'); await tapHole('p-6');
+    await wait(200);
+    if (!(await page.evaluate(() => __elab.lab.debug.done))) throw new Error('build step not recognised after wiring by taps');
+    await page.click('.gnext'); await wait(200);
+    await page.evaluate(() => { __elab.lab.debug.code = 'void setup(){ pinMode(12, OUTPUT); } void loop(){ digitalWrite(12, HIGH); delay(150); digitalWrite(12, LOW); delay(150); }'; });
+    await page.click('.run');
+    const seen2 = new Set();
+    for (let i = 0; i < 30 && seen2.size < 2; i++) { await wait(100); seen2.add(await page.evaluate(() => __elab.lab.debug.board.sim.comps.L1.lit)); }
+    if (seen2.size < 2) throw new Error('hand-wired LED did not blink');
+    if (await hscroll()) throw new Error('horizontal scroll in the wiring lesson');
     if (problems.length) throw new Error(problems.join(' | '));
     console.log(`  ok   ${label}`);
   } catch (e) { fail(label, e.message.split('\n')[0]); await shot(page, label); }

@@ -273,7 +273,8 @@ html[dir="rtl"] .iconbtn.sm { margin: -6px 0 -6px -8px; }
 /* ---------- Arduino lab ---------- */
 .unotag { fill: #0b6e8a; stroke: #12a3c9; stroke-width: 1; }
 .unotag.hi { fill: #1d9a52; stroke: #3ecf8e; }
-.unotext { fill: #fff; font: 800 10px var(--mono); }
+.unotext { fill: #fff; font: 800 7.5px var(--mono); }
+.unotag.v5 { fill: #9b2b24; stroke: #e0473b; } .unotag.gnd { fill: #3a424d; stroke: #9aa3ae; }
 .lab { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
 .labbody { flex: 1; display: flex; flex-direction: column; gap: 10px; padding: 8px 8px max(24px, env(safe-area-inset-bottom)); max-width: 1100px; width: 100%; margin: 0 auto; }
 .labboard { aspect-ratio: 85 / 40; flex: none; display: flex; flex-direction: column; }
@@ -294,3 +295,31 @@ html[dir="rtl"] .iconbtn.sm { margin: -6px 0 -6px -8px; }
   .labbody { display: grid; grid-template-columns: 1.1fr 1fr; align-items: start; }
   .labboard { position: sticky; top: 8px; }
 }
+
+.lableft { display: flex; flex-direction: column; gap: 8px; }
+.palette { display: flex; flex-direction: column; gap: 8px; }
+.tools { display: flex; flex-wrap: wrap; gap: 6px; }
+.tool { min-height: 44px; padding: 0 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); font-weight: 600; font-size: .85rem; }
+.tool.on { background: var(--amber); color: #1b1300; border-color: var(--amber); }
+.toolopts:empty { display: none; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { min-height: 40px; min-width: 44px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel2); font-size: .85rem; }
+.chip.on { background: var(--amber); color: #1b1300; border-color: var(--amber); }
+.labhint { font-size: .88rem; color: var(--muted); min-height: 1.4em; }
+.partcard { background: var(--panel); border: 1px solid #3a4a60; border-radius: 12px; padding: 8px 12px 10px; display: flex; flex-direction: column; gap: 8px; }
+.partcard[hidden] { display: none; }
+.partcard .cname { font-size: .95rem; } .partcard .cid { color: var(--muted); }
+.partcard input[type=range] { width: 100%; min-height: 44px; }
+.boardbtns { display: flex; gap: 8px; flex-wrap: wrap; }
+.labpins summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-weight: 700; }
+.guide { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 10px 14px 12px; display: flex; flex-direction: column; gap: 10px; }
+.guide[hidden] { display: none; }
+.gtop { display: flex; align-items: center; gap: 12px; font-size: .8rem; color: var(--muted); }
+.gtop .pbar { flex: 1; height: 6px; border-radius: 3px; overflow: hidden; background: #0f151c; }
+.gtop .pbar i { display: block; height: 100%; background: var(--amber); }
+.gtext { font-size: 1rem; line-height: 1.55; }
+.gquiz { display: flex; flex-direction: column; gap: 8px; }
+.guide .btnrow { display: flex; gap: 8px; justify-content: flex-end; }
+.serin { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.serline { flex: 1 1 160px; min-height: 44px; border-radius: 12px; border: 1px solid var(--line); background: #0b0f14; color: var(--text); padding: 0 12px; font: 14px var(--mono); direction: ltr; text-align: left; }
+.nl { display: flex; align-items: center; gap: 6px; font-size: .85rem; }

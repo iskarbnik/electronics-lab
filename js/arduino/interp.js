@@ -6,7 +6,8 @@
 import { parse } from './parser.js';
 
 export class Fl { constructor(v) { this.v = v; } }
-const num = x => (x instanceof Fl ? x.v : typeof x === 'string' ? Number(x) || 0 : x);
+export class Ch { constructor(v) { this.v = v; } }      // a char: a number that prints as a character
+const num = x => (x instanceof Fl || x instanceof Ch ? x.v : typeof x === 'string' ? Number(x) || 0 : x);
 const isF = x => x instanceof Fl;
 const err = (code, line, name = '') => Object.assign(new Error(code), { code, line, name });
 
@@ -26,12 +27,14 @@ function coerce(type, v) {
     const n = Math.trunc(num(v));
     if (!Number.isFinite(n)) return 0;
     const m = 2 ** type.bits, r = ((n % m) + m) % m;
-    return type.signed && r >= m / 2 ? r - m : r;
+    const w = type.signed && r >= m / 2 ? r - m : r;
+    return type.char ? new Ch(w) : w;
   }
   return v;
 }
 export function text(v, arg) {
   if (typeof v === 'string') return v;
+  if (v instanceof Ch) return String.fromCharCode(v.v & 255);
   if (isF(v)) return Number.isFinite(v.v) ? v.v.toFixed(arg ?? 2) : (Number.isNaN(v.v) ? 'nan' : 'inf');
   if (arg && arg !== 10 && Number.isInteger(v)) return (v >>> 0).toString(arg).toUpperCase();
   return String(v);
@@ -137,7 +140,7 @@ export class Sketch {
 
   *ev(n, sc) {
     switch (n.k) {
-      case 'num': return n.fl ? new Fl(n.v) : n.v;
+      case 'num': return n.fl ? new Fl(n.v) : n.ch ? new Ch(n.v) : n.v;
       case 'str': return n.v;
       case 'id': { const c = this.lookup(sc, n.name, n.line); if (c.arr) throw err('array', n.line, n.name); return c.val; }
       case 'index': {
@@ -242,8 +245,28 @@ export class Sketch {
         h.print(n.name === 'Serial.println' ? s + '\n' : s);
         return 0;
       }
-      case 'Serial.available': return 0;
-      case 'Serial.read': return -1;
+      case 'Serial.available': return h.available ? h.available() : 0;
+      case 'Serial.read': return h.readChar ? h.readChar() : -1;
+      case 'Serial.peek': return h.peekChar ? h.peekChar() : -1;
+      case 'Serial.write': need(1); h.print(typeof args[0] === 'string' ? args[0] : String.fromCharCode(A(0) & 255)); return 1;
+      case 'Serial.setTimeout': case 'Serial.flush': case 'Serial.end': return 0;
+      case 'Serial.parseInt': case 'Serial.parseFloat': {
+        if (!h.peekChar) return 0;
+        const isNum = c => (c >= 48 && c <= 57) || c === 45 || (n.name === 'Serial.parseFloat' && c === 46);
+        let c;
+        while ((c = h.peekChar()) !== -1 && !isNum(c)) h.readChar();
+        let str = '';
+        while ((c = h.peekChar()) !== -1 && isNum(c)) { str += String.fromCharCode(c); h.readChar(); }
+        const v = n.name === 'Serial.parseInt' ? parseInt(str, 10) : parseFloat(str);
+        return n.name === 'Serial.parseInt' ? coerce({ kind: 'int', bits: 32, signed: true }, Number.isFinite(v) ? v : 0) : new Fl(Number.isFinite(v) ? v : 0);
+      }
+      case 'Serial.readString': case 'Serial.readStringUntil': {
+        if (!h.peekChar) return '';
+        const stop = n.name === 'Serial.readStringUntil' ? A(0) : -2;
+        let str = '', c;
+        while ((c = h.readChar()) !== -1) { if (c === stop) break; str += String.fromCharCode(c); }
+        return str;
+      }
       case 'abs': need(1); return isF(args[0]) ? new Fl(Math.abs(args[0].v)) : Math.abs(args[0]);
       case 'min': need(2); return A(0) <= A(1) ? args[0] : args[1];
       case 'max': need(2); return A(0) >= A(1) ? args[0] : args[1];

@@ -6,7 +6,7 @@ Bilingual (Hebrew RTL + English) installable PWA that teaches electronics on a l
 - `js/sim/`: simulator. `board.js` geometry and strips, `circuit.js` components and `simulate()`, `solver.js`, `format.js` (`fmt`, resistor `bands`).
 - `js/lessons/`: `index.js` exports `LESSONS`; `l01..l10-*.js` one file per lesson; `common.js` step constructors; `engine.js` `applyStep` / `buildCircuit`.
 - `js/ui/`: `lessonPlayer.js` (the lesson screen, exposes `window.__elab.player.debug`), `boardView.js`, `schematicView.js`, `svg.js`.
-- `js/arduino/`: Phase 4. `parser.js` (lexer, parser for the Arduino C++ subset), `interp.js` (`Sketch`, generator based so `delay()` pauses; Uno integer sizes: int is 16 bit), `kit.js` (`newKit()` Uno + 3 LEDs + button + pot on the breadboard, `KitBoard` host for the sketch, `Runner` steps it in time), `examples.js`. Uno part: comp type `uno` in `circuit.js` (pin outputs are 25 Ω sources, INPUT_PULLUP is 20 kΩ to 5 V, over 40 mA flags `over`). `ui/arduinoLab.js` is the `#/arduino` screen (`window.__elab.lab`). analogWrite is blended between its high and low circuit states by duty.
+- `js/arduino/`: Phase 4. `parser.js` (lexer, parser for the Arduino C++ subset), `interp.js` (`Sketch`, generator based so `delay()` pauses; Uno integer sizes: int is 16 bit), `kit.js` (`newLabCircuit()`/`newKit()`: the Uno plugs into row j, columns 6 to 25, and the kit is wired to it with jumpers; `KitBoard` host for the sketch, `Runner` steps it in time), `examples.js`. Uno part: comp type `uno` in `circuit.js` (pin outputs are 25 Ω sources, INPUT_PULLUP is 20 kΩ to 5 V, over 40 mA flags `over`). `ui/arduinoLab.js` is the `#/arduino` screen (`window.__elab.lab`). analogWrite is blended between its high and low circuit states by duty.
 - `js/app.js` router and home screen, `js/i18n.js` strings (`t`, `L`, `ltr`, `bidi`), `js/store.js` progress in localStorage, `sw.js` service worker.
 - Lesson: `{ id, title, summary, schematic, setup:[step], steps:[step] }`. All text is `{ he, en }` and may hold simple HTML. Step types: info, explore, wire, place, measure, do (select/flip/remove/replace/set/press/turn, with `auto` and `until`), quiz. Any step may have `expect(sim, circuit)`, checked by tests.
 
@@ -30,6 +30,6 @@ Bilingual (Hebrew RTL + English) installable PWA that teaches electronics on a l
 1. Foundation: simulator, lesson engine, 10 lessons, PWA, i18n (done).
 2. (started: diode, capacitor, lessons 11 and 12) Capacitors, diodes, transistors, time-domain circuits, oscilloscope, calculators, parts encyclopedia.
 3. Logic gates.
-4. Arduino Uno with an in-app interpreter for a subset of Arduino code (lab screen done; guided Arduino lessons still to write).
+4. Arduino Uno with an in-app interpreter for a subset of Arduino code (done: lab, wiring editor, serial input, PWM, 7 guided lessons in `js/arduino/lessons.js`).
 5. Sandbox, challenges, quizzes, badges, AI tutor.
 6. ESP32.

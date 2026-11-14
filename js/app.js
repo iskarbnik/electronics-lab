@@ -2,7 +2,8 @@
 import { initLang, setLang, getLang, onLang, t, L, ltr } from './i18n.js';
 import * as store from './store.js';
 import { mountLesson } from './ui/lessonPlayer.js';
-import { mountArduinoLab } from './ui/arduinoLab.js';
+import { mountArduinoLab, progress as ardProgress } from './ui/arduinoLab.js';
+import { ARDUINO_LESSONS } from './arduino/lessons.js';
 
 const app = document.getElementById('app');
 let LESSONS = [];
@@ -31,6 +32,14 @@ function renderHome() {
       ${started ? `<span class="badge">${esc(t('home.continue'))}</span>` : ''}
     </a></li>`;
   }).join('');
+  const ardRows = [`<li><a class="lrow" href="#/arduino">
+      <span class="num"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7L3 12l5 5M16 7l5 5-5 5M14 5l-4 14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      <span class="lbody"><b>${esc(t('ard.free'))}</b><span>${esc(t('ard.freeSum'))}</span></span></a></li>`,
+    ...ARDUINO_LESSONS.map((l, k) => {
+      const done = ardProgress.isDone(l.id);
+      return `<li><a class="lrow${done ? ' done' : ''}" href="#/arduino/${esc(l.id)}"><span class="num">${done ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr">' + esc(t('home.done')) + '</span>' : k + 1}</span>
+      <span class="lbody"><b>${esc(L(l.title))}</b><span>${esc(L(l.summary))}</span></span></a></li>`;
+    })].join('');
   app.innerHTML = `
   <div class="home">
     <header class="hhead">
@@ -43,9 +52,7 @@ function renderHome() {
     <h2>${esc(t('home.unit1'))}</h2>
     ${loadError ? `<p class="err">${esc(t('lesson.loadError'))}</p>` : `<ol class="lessons">${rows}</ol>`}
     <h2>${esc(t('home.unit4'))}</h2>
-    <ol class="lessons"><li><a class="lrow" href="#/arduino">
-      <span class="num"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7L3 12l5 5M16 7l5 5-5 5M14 5l-4 14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-      <span class="lbody"><b>${esc(t('ard.title'))}</b><span>${esc(t('home.arduino'))}</span></span></a></li></ol>
+    <ol class="lessons">${ardRows}</ol>
     <h2 class="dim">${esc(t('home.next'))}</h2>
     <ul class="soon">${SOON.map(k => `<li>${esc(t(k))}</li>`).join('')}</ul>
     <button class="btn ghost reset" type="button">${esc(t('home.reset'))}</button>
@@ -71,11 +78,14 @@ function confirmReset() {
 function route() {
   if (player) { player.destroy(); player = null; }
   if (lab) { lab.destroy(); lab = null; }
-  if (location.hash === '#/arduino') {
+  const am = /^#\/arduino(?:\/([\w-]+))?$/.exec(location.hash);
+  if (am) {
+    const al = am[1] ? ARDUINO_LESSONS.find(l => l.id === am[1]) : null;
+    if (am[1] && !al) { location.hash = '#/'; return; }
     document.body.classList.remove('in-lesson');
     app.innerHTML = ''; window.scrollTo(0, 0);
-    document.title = `${t('ard.title')} | ${t('app.name')}`;
-    lab = mountArduinoLab(app, { onHome: () => { location.hash = '#/'; } });
+    document.title = `${al ? L(al.title) : t('ard.title')} | ${t('app.name')}`;
+    lab = mountArduinoLab(app, { lesson: al, lessons: ARDUINO_LESSONS, onHome: () => { location.hash = '#/'; }, onOpen: id => { location.hash = '#/arduino/' + id; } });
     return;
   }
   const m = /^#\/lesson\/([\w-]+)/.exec(location.hash);

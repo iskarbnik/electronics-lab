@@ -35,7 +35,7 @@ export function hitComp(circuit, x, y, max = 10) {
   let best = null, bd = Infinity;
   for (const pass of [false, true]) {
     for (const c of circuit.comps) {
-      if ((c.type === 'wire') !== pass) continue;
+      if ((c.type === 'wire') !== pass || c.type === 'uno') continue;
       let d = Infinity;
       if (c.type === 'battery') d = x >= BATTERY.x && x <= BATTERY.x + BATTERY.w && y >= BATTERY.y && y <= BATTERY.y + BATTERY.h ? 0 : Infinity;
       else if (c.type === 'pot') { const b = potBody(c); d = x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h ? 0 : Infinity; }
@@ -57,6 +57,7 @@ const hitButtonBody = (circuit, x, y) => {
 
 // ---------- static layer ----------
 function buildStatic(g, withBattery = true) {
+  const labMode = !withBattery;
   const hole = (x, y) => el('rect', { x: x - 4, y: y - 4, width: 8, height: 8, rx: 1.5, class: 'hole' });
   g.append(el('rect', { x: BOARD.x, y: BOARD.y, width: BOARD.w, height: BOARD.h, rx: 12, class: 'board' }));
   g.append(el('rect', { x: 12, y: 176, width: BOARD.w - 24, height: 8, rx: 3, class: 'groove' }));
@@ -70,7 +71,7 @@ function buildStatic(g, withBattery = true) {
   for (const r of 'abcdefghij') { lab(18, ROW_Y[r] + 3.5, r); lab(BOARD.w - 18, ROW_Y[r] + 3.5, r); }
   for (let c = 1; c <= COLS; c++) if (c === 1 || c % 5 === 0) {
     const x = holePos('a' + c).x;
-    lab(x, 68, c); lab(x, 300, c);
+    lab(x, 68, c); if (!labMode) lab(x, 300, c);
   }
   if (!withBattery) return;
   // battery
@@ -290,9 +291,9 @@ export function createBoardView(host, cb = {}) {
         const p = ps[k], name = c.props.names[k], pv = st.sim?.pins?.[name];
         const hi = pv && pv.v > 2.5 && name !== '5V';
         const col = name === '5V' ? '#e0473b' : name === 'GND' ? '#c9ced6' : '#4aa3ff';
-        grp.append(el('line', { x1: p.x, y1: p.y, x2: p.x, y2: p.y - 16, stroke: col, 'stroke-width': 2.6, 'stroke-linecap': 'round' }));
-        grp.append(el('rect', { x: p.x - 14, y: p.y - 34, width: 28, height: 17, rx: 4, class: 'unotag' + (hi ? ' hi' : '') }));
-        grp.append(el('text', { x: p.x, y: p.y - 21.5, text: name, class: 'unotext', 'text-anchor': 'middle' }));
+        grp.append(el('line', { x1: p.x, y1: p.y, x2: p.x, y2: p.y + 11, stroke: col, 'stroke-width': 2.4, 'stroke-linecap': 'round' }));
+        grp.append(el('rect', { x: p.x - 9.5, y: p.y + 11, width: 19, height: 13, rx: 3, class: 'unotag' + (hi ? ' hi' : '') + (name === '5V' ? ' v5' : name === 'GND' ? ' gnd' : '') }));
+        grp.append(el('text', { x: p.x, y: p.y + 20.5, text: name, class: 'unotext', 'text-anchor': 'middle' }));
         grp.append(plug(p));
       });
     } else if (c.type === 'diode') {
