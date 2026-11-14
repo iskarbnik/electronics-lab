@@ -74,6 +74,11 @@ export class KitBoard {
     this.out = '';
     this.inbuf = '';
     this.stats = this.freshStats();
+    this.startIo = {};
+    this.frameStart = {};
+    this.log = [];           // pin changes this frame: { at (sketch ms), name, state }, replayed across sub-steps
+    this.lastClock = 0;
+    this.scope = null;      // set to { pins: [name, name], t: [], a: [], b: [] } to record pin voltages
     this.refresh();
   }
 
@@ -86,6 +91,8 @@ export class KitBoard {
   resetPins() {
     this.uno.props.io = {};
     this.out = ''; this.inbuf = ''; this.time = 0; this.stats = this.freshStats();
+    this.lastClock = 0; this.clock = 0; this.frameEnd = 0; this.log = []; this.startIo = {}; this.frameStart = {};
+    if (this.scope) { this.scope.t.length = 0; this.scope.a.length = 0; this.scope.b.length = 0; }
     this.dirty = true; this.refresh();
   }
 
@@ -117,21 +124,39 @@ export class KitBoard {
     return (this.sim = acc);
   }
 
+  // Scope samples: pin voltage against simulated time, newest last, 10 s at most.
+  record(t, s) {
+    const sc = this.scope, pins = s.comps.UNO.pins;
+    sc.t.push(t); sc.a.push(sc.pins[0] ? pins[sc.pins[0]]?.v ?? 0 : null); sc.b.push(sc.pins[1] ? pins[sc.pins[1]]?.v ?? 0 : null);
+    while (sc.t.length > 1 && t - sc.t[0] > 10) { sc.t.shift(); sc.a.shift(); sc.b.shift(); }
+  }
+
   markLit(acc) { for (const c of this.circuit.comps) if (c.type === 'led') { const r = acc.comps[c.id]; r.lit = r.i > 3e-4; } }
 
   // Real time passes: capacitors charge and PWM pins switch at 490 Hz. Results are averaged over the step.
   timeStep(dt) {
-    const io = this.uno.props.io, pwm = this.pwmPins();
-    const N = pwm.length ? 32 : 1, sub = dt / N, saved = pwm.map(n => io[n].level);
-    let acc = null;
+    const io = this.uno.props.io, log = this.log.splice(0);
+    const pwmNow = this.pwmPins();
+    const N = log.length || this.scope ? 64 : pwmNow.length ? 32 : 1;
+    const sub = dt / N, final = JSON.parse(JSON.stringify(io));
+    // start of the frame: pins as they were before this frame's changes
+    for (const e of log) if (!(e.name in this.startIo)) this.startIo[e.name] = this.frameStart[e.name] ?? { mode: 0, level: 0, duty: null };
+    for (const name of Object.keys(this.startIo)) io[name] = { ...this.startIo[name] };
+    const t0 = this.lastClock, t1 = this.frameEnd ?? this.clock, span = Math.max(1e-6, t1 - t0);
+    let acc = null, next = 0;
     for (let k = 0; k < N; k++) {
       const t = this.time + (k + 0.5) * sub;
+      while (next < log.length && ((log[next].at - t0) / span) <= (k + 0.5) / N + 1e-9) { io[log[next].name] = { ...log[next].state }; next++; }
+      const pwm = this.pwmPins(), saved = pwm.map(n => io[n].level);
       pwm.forEach(n => { io[n].level = ((t / PWM_PERIOD) % 1) < io[n].duty ? 5 : 0; });
       const s = simulate(this.circuit, { dt: sub, advance: true });
+      pwm.forEach((n, j) => { io[n].level = saved[j]; });
+      if (this.scope) this.record(t, s);
       acc ||= emptyAcc(s);
       addInto(acc, s, 1 / N);
     }
-    pwm.forEach((n, k) => { io[n].level = saved[k]; });
+    for (const name of Object.keys(final)) io[name] = final[name];
+    this.startIo = {}; this.frameStart = JSON.parse(JSON.stringify(final)); this.lastClock = t1;
     this.time += dt;
     this.markLit(acc);
     this.dirty = false;
@@ -155,6 +180,9 @@ export class KitBoard {
     if (btn && l2) { if (btn.props.pressed && l2.lit) st.litWhilePressed = true; if (!btn.props.pressed && !l2.lit && st.litWhilePressed) st.darkWhileReleased = true; }
   }
 
+  // Remember a pin change with its time, so a frame that contains several changes can replay them.
+  note(name) { if (this.hasCap || this.scope) this.log.push({ at: this.clock, name, state: { ...this.uno.props.io[name] } }); }
+
   read(name) {
     if (this.dirty) this.refresh();
     return this.sim.comps.UNO.pins[name] || { v: 0, i: 0 };
@@ -164,19 +192,19 @@ export class KitBoard {
   host() {
     const self = this;
     return {
-      pinMode(n, mode) { const name = pinName(n); if (!name) return; const p = self.io(name); p.mode = mode; p.duty = null; p.level = 0; self.dirty = true; },
+      pinMode(n, mode) { const name = pinName(n); if (!name) return; const p = self.io(name); p.mode = mode; p.duty = null; p.level = 0; self.dirty = true; self.note(name); },
       digitalWrite(n, v) {
         const name = pinName(n); if (!name) return;
         const p = self.io(name); p.duty = null;
         if (p.mode === 1) p.level = v ? 5 : 0; else p.mode = v ? 2 : 0;   // writing HIGH to an input turns its pull-up on
-        self.dirty = true;
+        self.dirty = true; self.note(name);
       },
       analogWrite(n, v) {
         const name = pinName(n); if (!name) return;
         const p = self.io(name); p.mode = 1;
         if (!PWM_PINS.has(n)) { p.duty = null; p.level = v >= 128 ? 5 : 0; }      // only ~ pins have PWM, the others just go high or low
         else { p.duty = v <= 0 || v >= 255 ? null : v / 255; p.level = v <= 0 ? 0 : 5; }
-        self.dirty = true;
+        self.dirty = true; self.note(name);
       },
       digitalRead(n) { const name = pinName(n); return name && self.read(name).v > 2.5 ? 1 : 0; },
       analogRead(n) { const name = pinName(n); const v = name ? Math.max(0, Math.min(1023, Math.round(self.read(name).v / 5 * 1023))) : 0; self.stats.analog.add(v); return v; },
@@ -205,9 +233,11 @@ export class Runner {
     if (this.error || this.finished) return;
     if (!this.started) { this.started = true; this.wake = now; }
     if (now < this.wake) return;
-    this.board.clock = now;
+    this.board.frameEnd = now;
+    const began = performance.now();                       // a frame gets 8 ms of sketch time, then the screen gets a turn
     try {
-      for (let guard = 0; guard < 200; guard++) {
+      for (let guard = 0; guard < 100000; guard++) {
+        this.board.clock = Math.min(this.wake, now);          // the sketch resumes at the moment its delay ended
         const r = this.gen.next();
         if (r.done) { this.finished = true; return; }
         if (r.value.delay !== undefined) {
@@ -216,7 +246,8 @@ export class Runner {
           if (this.wake > now) return;
           continue;
         }
-        return;                                             // tick: give the screen a turn
+        if (performance.now() - began < 8) continue;        // a tick: keep going while there is time in this frame
+        return;
       }
     } catch (e) {
       if (e && e.code) this.error = { code: e.code, line: e.line, name: e.name === 'Error' ? '' : e.name };

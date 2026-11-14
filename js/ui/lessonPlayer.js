@@ -16,7 +16,8 @@ const ICON = {
   x: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>',
   check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
-const CHIPS = [100, 220, 330, 470, 1000, 2200, 4700, 10000];
+const CHIPS = [100, 220, 330, 470, 1000, 2200, 4700, 10000, 47000, 100000];
+const tri = s => (s.pins || []).length === 3;      // parts that take three holes in a row (pot, transistor, 3 pin gate, switch)
 const cleanV = v => (Math.abs(v) < 5e-4 ? 0 : v);
 const isTerm = h => h === 'BAT+' || h === 'BAT-';
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -79,7 +80,7 @@ export function mountLesson(root, lesson, opts = {}) {
   let ui, selection, pending, probes, meterOn, done, quizState, hintOv, cardOpen = true, complete = false;
   let advanceTimer = 0, toastTimer = 0, cardKey = '', cardRefs = null, lastFocus = null;
   const cur = () => steps[stepIdx];
-  const newUi = () => ({ pressed: new Set(), selected: new Set(), tapped: new Set() });
+  const newUi = () => ({ pressed: new Set(), selected: new Set(), tapped: new Set(), toggled: new Set() });
 
   function enter(i) {
     clearTimeout(advanceTimer);
@@ -103,7 +104,7 @@ export function mountLesson(root, lesson, opts = {}) {
     const s = cur(), boxes = [];
     const railPt = (strip, otherPin) => { const c = otherPin && parseHole(otherPin)?.col || 1; const p = holePos(strip + c) || holePos(strip + 1); return { x: p.x - 10, y: p.y - 10, w: 20, h: 20 }; };
     const stripFor = (strip, otherPin) => (/^[pq]/.test(strip) ? railPt(strip, otherPin) : stripBox(strip));
-    if (s.type === 'wire' || (s.type === 'place' && s.kind !== 'pot')) {
+    if (s.type === 'wire' || (s.type === 'place' && !tri(s))) {
       s.pins.forEach((p, k) => boxes.push(stripFor(stripOf(p), s.pins[1 - k])));
     } else if (s.type === 'place') {
       const a = holePos(s.pins[0]), b = holePos(s.pins[2]);
@@ -193,6 +194,7 @@ export function mountLesson(root, lesson, opts = {}) {
     if (!getComp(circuit, id)) return;
     selection = id; ui.selected.add(id); cardOpen = true; hintOv = null;
     const c = getComp(circuit, id);
+    if (c && c.type === 'switch') { c.props.on = !c.props.on; ui.toggled?.add(id); }
     if (c && c.type !== 'battery') { const b = compBox(c); board.setTarget(focusRect([b, { x: b.x, y: b.y + b.h + 120, w: b.w, h: 1 }])); }
     recalc();
   }
@@ -216,7 +218,7 @@ export function mountLesson(root, lesson, opts = {}) {
     const s = cur(), strips = s.pins.map(stripOf), used = usedHoles(circuit), strip = stripOf(hole);
     if (pending && hole === pending.hole) { pending = null; hintOv = null; return renderAll(); }
     if (!isTerm(hole) && used.has(hole)) return setHint('hint.occupied');
-    if (s.type === 'place' && s.kind === 'pot') {
+    if (s.type === 'place' && tri(s)) {
       if (strip !== strips[0]) return setHint('hint.wrongStrip');
       const p = parseHole(hole);
       const hs = [0, 1, 2].map(k => p.row + (p.col + k));
@@ -254,12 +256,12 @@ export function mountLesson(root, lesson, opts = {}) {
     const pick = (strip, canon) => (canon && stripOf(canon) === strip && free(canon) ? canon : holesOfStrip(strip).find(free) || null);
     if ((s.type === 'wire' || s.type === 'place') && !done) {
       const strips = s.pins.map(stripOf);
-      const idxs = s.kind === 'pot' ? [0] : pending ? [1 - pending.idx] : [0, 1];
+      const idxs = tri(s) ? [0] : pending ? [1 - pending.idx] : [0, 1];
       for (const k of idxs) {
         if (strips[k] !== undefined && !g.rings.some(r => r.strip === strips[k])) g.rings.push({ strip: strips[k], kind: 'target' });
       }
       g.pulse = pick(strips[idxs[0]], s.pins[idxs[0]]);
-      if (s.kind === 'pot') { const p = s.pins[0]; g.pulse = free(p) ? p : g.pulse; }
+      if (tri(s)) { const p = s.pins[0]; g.pulse = free(p) ? p : g.pulse; }
     } else if (s.type === 'measure' && !done) {
       const rs = stripOf(s.red), bs = stripOf(s.black);
       const onRed = probes.red && stripOf(probes.red) === rs;
@@ -345,6 +347,7 @@ export function mountLesson(root, lesson, opts = {}) {
     if (c.type === 'battery') return fmt(c.props.v, 'V');
     if (c.type === 'pot') return fmt(c.props.r, 'Ω');
     if (c.type === 'capacitor') return fmtF(c.props.c);
+    if (c.type === 'gate') return c.props.fn.toUpperCase();
     return '';
   }
   function renderCard() {
@@ -361,6 +364,9 @@ export function mountLesson(root, lesson, opts = {}) {
     let status = '', bad = false;
     if (c.type === 'resistor' && st.hot) { status = t('card.hot'); bad = true; }
     else if (c.type === 'led') { status = c.burned ? t('card.burned') : st.lit ? t('card.lit') : t('card.off'); bad = c.burned; }
+    else if (c.type === 'gate') status = st.high ? t('card.high') : t('card.low');
+    else if (c.type === 'switch') status = c.props.on ? t('card.on') : t('card.offsw');
+    else if (c.type === 'transistor') status = t('card.tr.' + (st.state || 'off'));
     else if (c.type === 'diode') status = st.conducting ? t('card.conducting') : t('card.blocking');
     else if (c.type === 'button') status = c.props.pressed ? t('card.pressed') : t('card.released');
     R.status.innerHTML = bidi(status); R.status.className = 'cstatus' + (bad ? ' bad' : '') + (status ? '' : ' empty');

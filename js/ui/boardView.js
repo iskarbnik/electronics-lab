@@ -7,6 +7,7 @@ const reduceMotion = () => globalThis.matchMedia?.('(prefers-reduced-motion: red
 
 // ---------- geometry helpers (also used by the player) ----------
 const pinPos = c => c.pins.map(holePos);
+const three = c => c.pins.length === 3 && c.type !== 'wire';
 export function potBody(c) {
   const [a, w, b] = pinPos(c);
   return { x: a.x - 14, y: w.y - 48, w: b.x - a.x + 28, h: 34 };
@@ -23,7 +24,7 @@ export function stripBox(strip) {
 // Bounding box of what a comp looks like, for guides and focusing.
 export function compBox(c) {
   if (c.type === 'battery') return { ...BATTERY };
-  if (c.type === 'pot') { const b = potBody(c); const [a, , p2] = pinPos(c); return { x: b.x, y: b.y, w: b.w, h: a.y - b.y + 12 }; }
+  if (three(c)) { const b = potBody(c); const [a, , p2] = pinPos(c); return { x: b.x, y: b.y, w: b.w, h: a.y - b.y + 12 }; }
   const ps = pinPos(c);
   const x0 = Math.min(...ps.map(p => p.x)), x1 = Math.max(...ps.map(p => p.x));
   const y0 = Math.min(...ps.map(p => p.y)), y1 = Math.max(...ps.map(p => p.y));
@@ -38,7 +39,7 @@ export function hitComp(circuit, x, y, max = 10) {
       if ((c.type === 'wire') !== pass || c.type === 'uno') continue;
       let d = Infinity;
       if (c.type === 'battery') d = x >= BATTERY.x && x <= BATTERY.x + BATTERY.w && y >= BATTERY.y && y <= BATTERY.y + BATTERY.h ? 0 : Infinity;
-      else if (c.type === 'pot') { const b = potBody(c); d = x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h ? 0 : Infinity; }
+      else if (three(c)) { const b = potBody(c); d = x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h ? 0 : Infinity; }
       else if (c.type === 'button') { const [a, b] = pinPos(c); d = Math.min(Math.hypot(x - (a.x + b.x) / 2, y - (a.y + b.y) / 2) - 8, distToSegment(x, y, a, b)); }
       else { const [a, b] = pinPos(c); d = distToSegment(x, y, a, b); }
       if (d <= max && d < bd) { bd = d; best = c.id; }
@@ -243,7 +244,7 @@ export function createBoardView(host, cb = {}) {
   };
   const halo = (c, cls) => {
     if (c.type === 'battery') return el('rect', { x: BATTERY.x - 5, y: BATTERY.y - 5, width: BATTERY.w + 10, height: BATTERY.h + 10, rx: 12, class: cls });
-    if (c.type === 'pot') { const b = potBody(c); const [a] = pinPos(c); return el('rect', { x: b.x - 5, y: b.y - 5, width: b.w + 10, height: a.y - b.y + 16, rx: 10, class: cls }); }
+    if (three(c)) { const b = potBody(c); const [a] = pinPos(c); return el('rect', { x: b.x - 5, y: b.y - 5, width: b.w + 10, height: a.y - b.y + 16, rx: 10, class: cls }); }
     const [a, b] = pinPos(c);
     return el('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: cls + ' line' });
   };
@@ -325,6 +326,33 @@ export function createBoardView(host, cb = {}) {
       if (!pr) grp.append(el('circle', { cx: m.x + 1, cy: m.y + 2.5, r: 10, fill: '#000', opacity: 0.45 }));
       grp.append(el('circle', { cx: m.x, cy: m.y + (pr ? 1.5 : 0), r: pr ? 7 : 9.5, class: 'btncap' + (pr ? ' down' : '') }));
       grp.append(plug(a), plug(b));
+    } else if (c.type === 'transistor' || (c.type === 'gate' && ps.length === 3) || c.type === 'switch') {
+      const body = potBody(c), [pa, pw, pb] = ps;
+      for (const p of ps) grp.append(el('line', { x1: p.x, y1: p.y, x2: p.x, y2: body.y + body.h, class: 'leg' }));
+      if (c.type === 'transistor') {
+        grp.append(el('path', { d: `M${body.x + 2} ${body.y + body.h}V${body.y + 12}A${(body.w - 4) / 2} 12 0 0 1 ${body.x + body.w - 2} ${body.y + 12}V${body.y + body.h}Z`, class: 'trbody' }));
+        grp.append(el('text', { x: pw.x, y: body.y + body.h - 6, text: 'NPN', class: 'pottext', 'text-anchor': 'middle' }));
+        [['C', pa], ['B', pw], ['E', pb]].forEach(([l, p]) => grp.append(el('text', { x: p.x, y: body.y + body.h + 14 + 0, text: l, class: 'pinlbl', 'text-anchor': 'middle' })));
+        if (st.sim?.state === 'sat' || st.sim?.state === 'act') grp.append(el('circle', { cx: pw.x, cy: body.y + 14, r: 3.2, class: st.sim.state === 'sat' ? 'trled sat' : 'trled' }));
+      } else if (c.type === 'gate') {
+        const hi = !!st.sim?.high;
+        grp.append(el('rect', { x: body.x, y: body.y, width: body.w, height: body.h, rx: 4, class: 'chipbody' }));
+        grp.append(el('text', { x: pw.x, y: body.y + 22, text: c.props.fn.toUpperCase(), class: 'chiptext', 'text-anchor': 'middle' }));
+        grp.append(el('circle', { cx: pb.x - 7, cy: body.y + 8, r: 3.4, class: 'chipled' + (hi ? ' hi' : '') }));
+        [['A', pa], ['B', pw], ['Y', pb]].forEach(([l, p]) => grp.append(el('text', { x: p.x, y: body.y + body.h + 14, text: l, class: 'pinlbl', 'text-anchor': 'middle' })));
+      } else {
+        const on = !!c.props.on;
+        grp.append(el('rect', { x: body.x, y: body.y, width: body.w, height: body.h, rx: 6, class: 'btnbody' }));
+        grp.append(el('line', { x1: pw.x, y1: body.y + body.h - 6, x2: on ? pb.x - 3 : pa.x + 3, y2: body.y + 10, class: 'swlever' + (on ? ' on' : '') }));
+        grp.append(el('text', { x: pa.x, y: body.y + body.h + 14, text: '−', class: 'pinlbl', 'text-anchor': 'middle' }), el('text', { x: pb.x, y: body.y + body.h + 14, text: '+', class: 'pinlbl', 'text-anchor': 'middle' }));
+      }
+      for (const p of ps) grp.append(plug(p));
+    } else if (c.type === 'gate') {
+      const [a, b] = ps, m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      grp.append(el('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: 'leg' }));
+      grp.append(el('rect', { x: m.x - 17, y: m.y - 9, width: 34, height: 18, rx: 4, class: 'chipbody' }));
+      grp.append(el('text', { x: m.x, y: m.y + 4, text: 'NOT', class: 'chiptext small', 'text-anchor': 'middle' }));
+      grp.append(plug(a), plug(b));
     } else if (c.type === 'pot') {
       const body = potBody(c), [pa, pw, pb] = ps;
       for (const p of ps) grp.append(el('line', { x1: p.x, y1: p.y, x2: p.x, y2: body.y + body.h, class: 'leg' }));
@@ -341,6 +369,8 @@ export function createBoardView(host, cb = {}) {
   function update(m) {
     model = m;
     const { circuit, sim } = m;
+    const bat = circuit.comps.find(c => c.type === 'battery'), bt = gStatic.querySelector('.battext');
+    if (bat && bt && bt.textContent !== fmt(bat.props.v, 'V')) bt.textContent = fmt(bat.props.v, 'V');
     clear(gBelow); clear(gComps); clear(gTop.parentNode === svg ? gTop : gTop);
     gTop.append(rubber);
     const gd = m.guides || {};

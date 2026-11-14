@@ -5,8 +5,8 @@ A bilingual (Hebrew RTL and English), installable PWA that teaches electronics o
 ## Phases
 
 1. Foundation: breadboard and schematic simulator, 10 lessons on voltage, current, resistors, LEDs, power, buttons and potentiometers.
-2. More parts: capacitors, diodes, transistors, oscilloscope, calculators, parts encyclopedia.
-3. Digital logic gates.
+2. More parts: capacitors, diodes, transistors, an oscilloscope (in the Arduino lab), calculators and a parts encyclopedia.
+3. Digital logic gates: AND, OR, NOT, NAND, NOR and XOR.
 4. Arduino Uno with code: an in-app interpreter for a subset of Arduino C++ drives LEDs, a button and a potentiometer on the breadboard (open the Arduino lab from the home screen).
 5. Sandbox, challenges and an AI tutor.
 6. ESP32.

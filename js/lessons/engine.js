@@ -10,7 +10,7 @@ export function applyStep(circuit, step) {
 
 // Circuit after the setup and steps [0, upto). Simulated after every step so that burnt LEDs stay burnt.
 export function buildCircuit(lesson, upto = 0) {
-  const c = newCircuit();
+  const c = newCircuit(lesson.battery);
   for (const s of lesson.setup || []) { applyStep(c, s); simulate(c); }
   for (const s of lesson.steps.slice(0, upto)) { applyStep(c, s); simulate(c); }
   return c;

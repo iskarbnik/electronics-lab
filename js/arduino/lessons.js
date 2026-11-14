@@ -67,7 +67,7 @@ export const ARDUINO_LESSONS = [
       info(T(
         'עד עכשיו הפין היה פלט. עכשיו נקרא ממנו. הלחצן על פין 2 מחובר לאדמה, ולכן כשלוחצים עליו הפין יורד ל-0 V.',
         'So far a pin was an output. Now we read from one. The button on pin 2 goes to ground, so pressing it pulls the pin down to 0 V.')),
-      code(T('הריצו, ולחצו על הלחצן בלוח. הנורית הצהובה (פין 8) נדלקת כשלוחצים ונכבית כשעוזבים.', 'Run it, then press the button on the board. The yellow LED (pin 8) lights while you press and goes out when you let go.'),
+      code(T('הריצו, ולחצו על הלחצן בלוח. הנורית הצהובה (פין 8) נדלקת כשלוחצים ונכבויה כשעוזבים.', 'Run it, then press the button on the board. The yellow LED (pin 8) lights while you press and goes out when you let go.'),
         T(
 `void setup() {
   pinMode(2, INPUT_PULLUP);

@@ -19,6 +19,11 @@ const doStep = (comp, act, text, auto, until, extra) => mk({ type: 'do', comp, a
 export const select = (comp, text, extra) =>
   doStep(comp, 'select', text, () => {}, (sim, c, ui) => !!ui && ui.selected.has(comp), extra);
 
+// Toggle an SPDT switch to `on`; done when it is in that position.
+export const toggle = (comp, on, text, extra) => doStep(comp, 'toggle', text,
+  c => { const x = getComp(c, comp); if (x) x.props.on = !!on; },
+  (sim, c) => { const x = getComp(c, comp); return !!x && !!x.props.on === !!on; }, extra);
+
 export const press = (comp, text, extra) =>
   doStep(comp, 'press', text, () => {}, (sim, c, ui) => !!ui && ui.pressed.has(comp), extra);
 

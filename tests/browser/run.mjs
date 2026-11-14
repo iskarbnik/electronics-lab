@@ -67,7 +67,7 @@ async function playLesson(cfg, lesson) {
     if (!c) throw new Error('component not on board: ' + id);
     if (c.type === 'battery') return [BATTERY.x + BATTERY.w / 2, BATTERY.y + BATTERY.h / 2];
     const ps = c.pins.map(pt);
-    if (c.type === 'pot') return [ps[1][0], ps[1][1] - 30];
+    if (c.pins.length === 3) return [ps[1][0], ps[1][1] - 30];
     return [(ps[0][0] + ps[ps.length - 1][0]) / 2, (ps[0][1] + ps[ps.length - 1][1]) / 2];
   };
   const state = () => page.evaluate(() => ({ step: __elab.player.debug.step, done: !!document.querySelector('.complete:not([hidden])') && getComputedStyle(document.querySelector('.complete')).display !== 'none', nextOn: !document.querySelector('.nx').disabled }));
@@ -104,7 +104,7 @@ async function playLesson(cfg, lesson) {
         await page.click(`.opt >> nth=${s.answer}`);
       } else if (s.type === 'explore') await tapHole(s.want === 'rail' ? 'p+12' : 'c12');
       else if (s.type === 'wire') { await tapHole(s.pins[0]); await tapHole(s.pins[1]); }
-      else if (s.type === 'place') { if (s.kind === 'pot') await tapHole(s.pins[0]); else { await tapHole(s.pins[0]); await tapHole(s.pins[1]); } }
+      else if (s.type === 'place') { if (s.pins.length === 3) await tapHole(s.pins[0]); else { await tapHole(s.pins[0]); await tapHole(s.pins[1]); } }
       else if (s.type === 'measure') { await tapHole(s.red); await tapHole(s.black); }
       else if (s.type === 'do') {
         const q = await toScreen(await compPoint(s.comp));
@@ -275,10 +275,62 @@ async function labCheck(cfg) {
   finally { await ctx.close(); }
 }
 
+// Calculators, parts encyclopedia and the oscilloscope.
+async function pagesCheck(cfg) {
+  const label = `${cfg.name}/tools-parts-scope`;
+  const ctx = await browser.newContext(cfg.ctx);
+  const page = await ctx.newPage();
+  const problems = [];
+  page.on('console', m => { if (['error', 'warning'].includes(m.type())) problems.push(`console ${m.type()}: ${m.text()}`); });
+  page.on('pageerror', e => problems.push(`pageerror: ${e.message}`));
+  const wait = ms => page.waitForTimeout(ms);
+  const hscroll = () => page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
+  const unwrapped = () => page.evaluate(() => {
+    const re = /(?<![\w.\/])-?\d+(?:[.,]\d+)?(?:\/\d+)?\s?(?:µA|mA|A|µV|mV|V|kΩ|MΩ|Ω|mW|W|µF|mF|F|s)(?![A-Za-z0-9µΩ])/, out = [];
+    const w = document.createTreeWalker(document.querySelector('.lab'), NodeFilter.SHOW_TEXT);
+    for (let n; (n = w.nextNode());) { const e = n.parentElement; if (!e || e.closest('bdi,code,svg,textarea,pre,select,input,[dir=ltr]')) continue; const m = re.exec(n.nodeValue); if (m) out.push(m[0]); }
+    return out;
+  });
+  try {
+    await page.goto(BASE); await page.waitForSelector('.lrow');
+    // calculators
+    await page.click('a[href="#/tools"]'); await page.waitForSelector('.toolcard');
+    const before = await page.textContent('.toolcard:nth-of-type(2) .tout');
+    await page.fill('.toolcard:nth-of-type(2) input >> nth=2', '5');           // LED current 5 mA
+    const after = await page.textContent('.toolcard:nth-of-type(2) .tout');
+    if (before === after) throw new Error('LED resistor result did not change');
+    if (!/ohm|Ω/i.test(await page.textContent('.toolcard:first-of-type .tout')) && !/Ω/.test(await page.textContent('.toolcard:first-of-type .tout'))) throw new Error('Ohm card empty');
+    if (!(await page.$('.swatches i'))) throw new Error('no colour band swatches');
+    if (cfg.lang === 'he') { const bad = await unwrapped(); if (bad.length) throw new Error('tools: units outside a bidi run: ' + bad.join(', ')); }
+    if (await hscroll()) throw new Error('horizontal scroll on tools');
+    // parts
+    await page.goto(`${BASE}#/parts`); await page.waitForSelector('.partcardx');
+    const all = await page.$$eval('.partcardx', a => a.length);
+    await page.fill('.partsearch', 'NAND');
+    const some = await page.$$eval('.partcardx', a => a.length);
+    if (!(some >= 1 && some < all)) throw new Error(`search did not filter (${some} of ${all})`);
+    await page.fill('.partsearch', 'zzzz'); if (await page.$('.partcardx')) throw new Error('nonsense search matched');
+    await page.fill('.partsearch', '');
+    if (cfg.lang === 'he') { const bad = await unwrapped(); if (bad.length) throw new Error('parts: units outside a bidi run: ' + bad.join(', ')); }
+    if (await hscroll()) throw new Error('horizontal scroll on parts');
+    // scope: Blink on D13 draws a trace
+    await page.goto(`${BASE}#/arduino`); await page.waitForSelector('.lab .code');
+    await page.click('.scopesum'); await page.click('.run'); await wait(1500);
+    const pts = await page.$eval('.scopesvg polyline', p => p.getAttribute('points').split(' ').length).catch(() => 0);
+    if (pts < 5) throw new Error('scope drew no trace');
+    await page.click('.stop');
+    if (await hscroll()) throw new Error('horizontal scroll with the scope open');
+    if (problems.length) throw new Error(problems.join(' | '));
+    console.log(`  ok   ${label}`);
+  } catch (e) { fail(label, e.message.split('\n')[0]); await shot(page, label); }
+  finally { await ctx.close(); }
+}
+
 for (const cfg of CONFIGS) {
   console.log(cfg.name);
   for (const lesson of LESSONS) await playLesson(cfg, lesson);
   await labCheck(cfg);
+  await pagesCheck(cfg);
 }
 console.log('offline');
 await offlineCheck();

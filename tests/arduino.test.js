@@ -225,3 +225,14 @@ test('guided Arduino lessons are well formed and can be completed', () => {
     });
   }
 });
+
+test('a fast sketch keeps real time across frames and the scope sees every edge', () => {
+  const b = new KitBoard();
+  b.scope = { pins: ['D13', ''], t: [], a: [], b: [] };
+  const r = new Runner('void setup(){ pinMode(13, OUTPUT); } void loop(){ digitalWrite(13, HIGH); delay(5); digitalWrite(13, LOW); delay(5); }', b);
+  for (let f = 1; f <= 10; f++) { r.step(f * 16); b.advance(0.016); }
+  const edges = b.scope.a.reduce((n, v, k) => n + (k && (v > 1) !== (b.scope.a[k - 1] > 1) ? 1 : 0), 0);
+  assert.ok(edges >= 28 && edges <= 34, `edges ${edges}`);               // 160 ms / 5 ms = 32
+  const high = b.scope.a.filter(v => v > 1).length / b.scope.a.length;
+  assert.ok(high > 0.4 && high < 0.56, `duty ${high}`);
+});

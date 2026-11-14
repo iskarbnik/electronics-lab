@@ -4,15 +4,18 @@ import * as store from './store.js';
 import { mountLesson } from './ui/lessonPlayer.js';
 import { mountArduinoLab, progress as ardProgress } from './ui/arduinoLab.js';
 import { ARDUINO_LESSONS } from './arduino/lessons.js';
+import { mountTools } from './ui/tools.js';
+import { mountParts } from './ui/parts.js';
 
 const app = document.getElementById('app');
 let LESSONS = [];
 let player = null;
 let lab = null;
+let page = null;
 let loadError = false;
 
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const SOON = ['soon.parts', 'soon.scope', 'soon.enc', 'soon.logic', 'soon.sandbox', 'soon.esp'];
+const SOON = ['soon.sandbox', 'soon.esp'];
 
 function langSwitch() {
   const cur = getLang();
@@ -53,6 +56,11 @@ function renderHome() {
     ${loadError ? `<p class="err">${esc(t('lesson.loadError'))}</p>` : `<ol class="lessons">${rows}</ol>`}
     <h2>${esc(t('home.unit4'))}</h2>
     <ol class="lessons">${ardRows}</ol>
+    <h2>${esc(t('home.tools'))}</h2>
+    <ol class="lessons">
+      <li><a class="lrow" href="#/tools"><span class="num">Ω</span><span class="lbody"><b>${esc(t('tools.title'))}</b><span>${esc(t('tools.sum'))}</span></span></a></li>
+      <li><a class="lrow" href="#/parts"><span class="num">?</span><span class="lbody"><b>${esc(t('parts.title'))}</b><span>${esc(t('parts.sum'))}</span></span></a></li>
+    </ol>
     <h2 class="dim">${esc(t('home.next'))}</h2>
     <ul class="soon">${SOON.map(k => `<li>${esc(t(k))}</li>`).join('')}</ul>
     <button class="btn ghost reset" type="button">${esc(t('home.reset'))}</button>
@@ -78,6 +86,15 @@ function confirmReset() {
 function route() {
   if (player) { player.destroy(); player = null; }
   if (lab) { lab.destroy(); lab = null; }
+  if (page) { page.destroy(); page = null; }
+  if (location.hash === '#/tools' || location.hash === '#/parts') {
+    document.body.classList.remove('in-lesson');
+    app.innerHTML = ''; window.scrollTo(0, 0);
+    const tools = location.hash === '#/tools';
+    document.title = `${t(tools ? 'tools.title' : 'parts.title')} | ${t('app.name')}`;
+    page = (tools ? mountTools : mountParts)(app, { onHome: () => { location.hash = '#/'; } });
+    return;
+  }
   const am = /^#\/arduino(?:\/([\w-]+))?$/.exec(location.hash);
   if (am) {
     const al = am[1] ? ARDUINO_LESSONS.find(l => l.id === am[1]) : null;
@@ -104,6 +121,7 @@ function route() {
 
 onLang(() => {
   if (lab) document.title = `${t('ard.title')} | ${t('app.name')}`;
+  else if (page) document.title = `${t(location.hash === '#/tools' ? 'tools.title' : 'parts.title')} | ${t('app.name')}`;
   else if (!player) renderHome();
   else { const l = LESSONS.find(x => location.hash.endsWith(x.id)); if (l) document.title = `${L(l.title)} | ${t('app.name')}`; }
 });

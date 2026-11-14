@@ -169,3 +169,73 @@ test('capacitor charges through a resistor along 1 - exp(-t/RC)', () => {
   near(s.comps.C1.v, 9, 0.05);
   assert.ok(Math.abs(s.comps.C1.i) < 1e-4, 'no current once full');
 });
+
+function loopCircuit(parts, v = 9) {
+  const c = newCircuit(v);
+  addComp(c, { id: 'WP', type: 'wire', pins: ['BAT+', 'p+1'] });
+  addComp(c, { id: 'WN', type: 'wire', pins: ['BAT-', 'p-1'] });
+  for (const [id, type, pins, props] of parts) addComp(c, { id, type, pins, props });
+  return c;
+}
+
+test('NPN transistor: base current switches a bigger collector current, then saturates', () => {
+  // 9 V -> 470 R -> LED -> collector; base from 9 V through Rb; emitter to ground
+  const mk = rb => loopCircuit([
+    ['W1', 'wire', ['p+3', 'a3'], {}], ['R1', 'resistor', ['c3', 'c6'], { r: 470 }], ['D1', 'led', ['d6', 'd7'], {}],
+    ['Q1', 'transistor', ['e7', 'e8', 'e9'], {}], ['W2', 'wire', ['a9', 'p-9'], {}],
+    ['W3', 'wire', ['p+12', 'a12'], {}], ['R2', 'resistor', ['c12', 'c8'], { r: rb }],
+  ]);
+  const on = simulate(mk(100000));                       // ib = (9-0.7)/100k = 83 uA
+  assert.equal(on.comps.Q1.state, 'act');
+  near(on.comps.Q1.ib, 8.3e-5, 5e-6);
+  near(on.comps.Q1.ic, 100 * on.comps.Q1.ib, 5e-4);      // beta = 100
+  assert.ok(on.comps.D1.lit);
+  const sat = simulate(mk(1000));                         // ib = 8 mA: wants far more than the LED branch can give
+  assert.equal(sat.comps.Q1.state, 'sat');
+  near(sat.comps.Q1.vce, 0.2, 0.15);
+  const off = simulate(loopCircuit([['W1', 'wire', ['p+3', 'a3'], {}], ['R1', 'resistor', ['c3', 'c6'], { r: 470 }], ['D1', 'led', ['d6', 'd7'], {}], ['Q1', 'transistor', ['e7', 'e8', 'e9'], {}], ['W2', 'wire', ['a9', 'p-9'], {}]]));
+  assert.equal(off.comps.Q1.state, 'off');
+  assert.ok(!off.comps.D1.lit);
+});
+
+test('logic gates follow their truth tables, with the SPDT switch as input', () => {
+  const table = { and: [0, 0, 0, 1], or: [0, 1, 1, 1], nand: [1, 1, 1, 0], nor: [1, 0, 0, 0], xor: [0, 1, 1, 0], xnor: [1, 0, 0, 1] };
+  for (const [fn, want] of Object.entries(table)) {
+    const c = loopCircuit([
+      ['S1', 'switch', ['e3', 'e4', 'e5'], {}], ['S2', 'switch', ['e7', 'e8', 'e9'], {}],
+      ['W1', 'wire', ['p-3', 'a3'], {}], ['W2', 'wire', ['p+5', 'a5'], {}], ['W3', 'wire', ['p-7', 'a7'], {}], ['W4', 'wire', ['p+9', 'a9'], {}],
+      ['W5', 'wire', ['a4', 'b12'], {}], ['W6', 'wire', ['a8', 'b13'], {}],
+      ['G1', 'gate', ['e12', 'e13', 'e14'], { fn }],
+      ['R1', 'resistor', ['a14', 'a17'], { r: 330 }], ['D1', 'led', ['b17', 'b18'], {}], ['W7', 'wire', ['a18', 'p-18'], {}],
+    ], 5);
+    const got = [];
+    for (const [a, b] of [[0, 0], [0, 1], [1, 0], [1, 1]]) {
+      getComp(c, 'S1').props.on = !!a; getComp(c, 'S2').props.on = !!b;
+      const s = simulate(c);
+      got.push(s.comps.G1.high ? 1 : 0);
+      assert.equal(!!s.comps.D1.lit, !!s.comps.G1.high, `${fn} led follows output`);
+    }
+    assert.deepEqual(got, want, fn);
+  }
+  const n = loopCircuit([['S1', 'switch', ['e3', 'e4', 'e5'], {}], ['W1', 'wire', ['p-3', 'a3'], {}], ['W2', 'wire', ['p+5', 'a5'], {}], ['W5', 'wire', ['a4', 'b12'], {}], ['G1', 'gate', ['e12', 'e13'], { fn: 'not' }]], 5);
+  assert.equal(simulate(n).comps.G1.high, true);
+  getComp(n, 'S1').props.on = true;
+  assert.equal(simulate(n).comps.G1.high, false);
+});
+
+import { ohm, ledResistor, e12Up, divider, rc, bandCodes } from '../js/calc.js';
+test('calculators', () => {
+  const o = ohm({ v: 9, r: 450 });
+  near(o.i, 0.02, 1e-9); near(o.p, 0.18, 1e-9);
+  near(ohm({ i: 0.02, r: 100 }).v, 2, 1e-9);
+  assert.equal(ohm({ v: 1 }), null);
+  assert.equal(e12Up(350), 390); assert.equal(e12Up(390), 390); assert.equal(e12Up(1), 1); assert.equal(e12Up(9000), 10000);
+  const l = ledResistor(9, 2, 0.02);
+  near(l.exact, 350, 1e-9); assert.equal(l.std, 390); assert.ok(l.actual < 0.02);
+  assert.equal(ledResistor(2, 3, 0.02), null);
+  near(divider(9, 1000, 2000), 6, 1e-9);
+  near(rc(1000, 0.001).tau, 1, 1e-12);
+  assert.deepEqual(bandCodes(470).names, ['yellow', 'violet', 'brown']);
+  assert.deepEqual(bandCodes(10000).names, ['brown', 'black', 'orange']);
+  assert.deepEqual(bandCodes(4.7).names, ['yellow', 'violet', 'gold']);
+});

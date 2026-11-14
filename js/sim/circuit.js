@@ -17,6 +17,11 @@ const UNO_PULLUP_R = 20000;
 export const SHORT_A = 1;            // battery current that counts as a short circuit
 const LED_RS = 8;
 const DIODE_RS = 1;
+const TR_RB = 20;                    // base-emitter junction resistance
+const TR_VSAT = 0.2, TR_RSAT = 2;    // collector-emitter when saturated
+const GATE_R = 50;                   // logic output resistance
+export const GATE_FNS = { and: v => v[0] && v[1], or: v => v[0] || v[1], not: v => !v[0], nand: v => !(v[0] && v[1]), nor: v => !(v[0] || v[1]), xor: v => v[0] !== v[1], xnor: v => v[0] === v[1] };
+export const gatePinCount = fn => (fn === 'not' ? 2 : 3);
 export const DIODE_VF = 0.7;         // silicon rectifier diode, e.g. 1N4007
 export const CAP_DT = 1e-3;          // time step used when a plain DC solve meets a capacitor
 const WIRE_R = 0.01;
@@ -31,6 +36,9 @@ const DEFAULTS = {
   button: () => ({ pressed: false }),
   pot: () => ({ r: 10000, pos: 0.5 }),
   diode: () => ({ vf: DIODE_VF }),
+  switch: () => ({ on: false }),               // SPDT toggle: pins [low, common, high]
+  transistor: () => ({ beta: 100, vf: 0.7 }),  // NPN, pins [collector, base, emitter]
+  gate: p => ({ fn: p?.fn || 'and' }),         // logic gate, pins [A, B, Y] (NOT: [A, Y]); supply is the battery voltage
   capacitor: () => ({ c: 0.001, vc: 0 }),
   uno: () => ({ names: [], io: {} }),       // pins[k] is the hole of Arduino pin names[k]; io[name] = { mode, level }   // farads and the volts stored right now (pin0 minus pin1)
 };
@@ -69,6 +77,15 @@ function solveOnce(circuit, dt) {
     else if (c.type === 'button') { if (c.props.pressed) add(n[0], n[1], 1 / WIRE_R); }
     else if (c.type === 'led') { if (!c.burned) add(n[0], n[1], 0, 0, { led: true, on: true, rs: LED_RS }); }
     else if (c.type === 'diode') add(n[0], n[1], 0, 0, { led: true, on: true, rs: DIODE_RS });
+    else if (c.type === 'switch') add(n[1], c.props.on ? n[2] : n[0], 1 / WIRE_R);
+    else if (c.type === 'transistor') {
+      const be = { c, a: n[1], b: n[2], g: 0, is: 0, led: true, on: true, rs: TR_RB, tr: 'be' };
+      els.push(be, { c, a: n[0], b: n[2], g: GMIN, is: 0, tr: 'ce', mode: 'off', icw: 0, be });
+    }
+    else if (c.type === 'gate') {
+      const f = GATE_FNS[c.props.fn] ? c.props.fn : 'and', k = c.pins.length;
+      els.push({ c, a: n[k - 1], b: ground, g: 1 / GATE_R, is: 0, gate: true, ins: n.slice(0, k - 1), fn: f, out: false, vcc: (circuit.comps.find(x => x.type === 'battery')?.props.v) ?? 5 });
+    }
     else if (c.type === 'uno') {
       c.pins.forEach((_, k) => {
         const name = c.props.names[k], st = c.props.io[name] || { mode: 0, level: 0 };
@@ -93,6 +110,8 @@ function solveOnce(circuit, dt) {
     for (let k = 0; k < N; k++) A[k][k] = GMIN;
     for (const e of els) {
       if (e.led) { e.g = e.on ? 1 / e.rs : GMIN; e.is = e.on ? e.c.props.vf / e.rs : 0; }
+      else if (e.tr === 'ce') { if (e.mode === 'sat') { e.g = 1 / TR_RSAT; e.is = e.g * TR_VSAT; } else { e.g = GMIN; e.is = e.mode === 'act' ? -e.icw : 0; } }
+      else if (e.gate) e.is = e.g * (e.out ? e.vcc : 0);
       A[e.a][e.a] += e.g; A[e.b][e.b] += e.g; A[e.a][e.b] -= e.g; A[e.b][e.a] -= e.g;
       b[e.a] += e.is; b[e.b] -= e.is;
     }
@@ -105,6 +124,22 @@ function solveOnce(circuit, dt) {
       if (e.on && dv < e.c.props.vf - 1e-9) { e.on = false; changed = true; }
       else if (!e.on && dv > e.c.props.vf + 1e-9) { e.on = true; changed = true; }
     }
+    for (const e of els) {
+      if (e.tr === 'ce') {
+        const be = e.be, vf = e.c.props.vf;
+        const ib = be.on ? Math.max(0, (V[be.a] - V[be.b] - vf) / be.rs) : 0, want = e.c.props.beta * ib, vce = V[e.a] - V[e.b];
+        let mode;
+        if (!be.on) mode = 'off';
+        else if (e.mode === 'sat') mode = (vce - TR_VSAT) / TR_RSAT > want + 1e-9 ? 'act' : 'sat';
+        else mode = vce < TR_VSAT - 1e-9 ? 'sat' : 'act';
+        if (mode !== e.mode) { e.mode = mode; changed = true; }
+        if (mode === 'act' && Math.abs(want - e.icw) > 1e-9 + 1e-6 * want) { e.icw = want; changed = true; }
+      } else if (e.gate) {
+        const levels = e.ins.map(k => V[k] > e.vcc * 0.5), out = !!GATE_FNS[e.fn](levels);
+        e.levels = levels;
+        if (out !== e.out) { e.out = out; changed = true; }
+      }
+    }
     if (!changed) break;
   }
 
@@ -116,6 +151,12 @@ function solveOnce(circuit, dt) {
     let i = e.g * dv - e.is;
     if (e.led && !e.on) i = 0;
     if (e.c.type === 'uno') { (r.pins ||= {})[e.pin] = { v: dv, i }; continue; }
+    if (e.c.type === 'transistor') {
+      if (e.tr === 'be') { r.vbe = dv; r.ib = i; } else { r.vce = dv; r.ic = i; r.state = e.mode; }
+      r.v = r.vce ?? 0; r.i = r.ic ?? 0; r.p = Math.abs((r.vce || 0) * (r.ic || 0)) + Math.abs((r.vbe || 0) * (r.ib || 0));
+      continue;
+    }
+    if (e.c.type === 'gate') { r.v = dv; r.i = -i; r.p = Math.abs(dv * i); r.high = e.out; r.inputs = e.levels || e.ins.map(() => false); continue; }
     if (e.c.type === 'battery') { r.v = dv; r.i = -i; r.p = dv * -i; }
     else if (e.c.type === 'pot') {
       if (e.part === 0) { r.v = dv; r.i = i; }
@@ -140,6 +181,7 @@ function solveOnce(circuit, dt) {
         r.pins[name].over = Math.abs(r.pins[name].i) > UNO_PIN_MAX_A && name !== '5V' && name !== 'GND';
       });
     }
+    if (c.type === 'switch') r.on = !!c.props.on;
     if (c.type === 'diode') r.conducting = r.i > 1e-4;
     if (c.type === 'capacitor') r.charge = (c.props.c || 0) * r.v;
   }

@@ -10,6 +10,7 @@ function valueText(type, comp, plan) {
   if (type === 'resistor') return fmt(p.r ?? 470, 'Ω');
   if (type === 'pot') return fmt(p.r ?? 10000, 'Ω');
   if (type === 'capacitor') return fmtF(p.c ?? 0.001);
+  if (type === 'gate') return String(p.fn ?? 'and').toUpperCase();
   return '';
 }
 
@@ -41,6 +42,36 @@ function symbol(part, comp, plan, sim) {
     line('M-40 0H-5'); line('M5 0H40');
     g.append(el('path', { d: 'M-5 -15V15', class: 'plate long' }), el('path', { d: 'M5 -15V15', class: 'plate long' }));
     g.append(el('text', { x: -17, y: -10, text: '+', class: 'sch-plus', 'text-anchor': 'middle' }));
+  } else if (t === 'transistor') {
+    // base (-40,0), collector (20,-40), emitter (20,40)
+    const st = sim?.comps[part.id]?.state;
+    line('M-40 0H-8'); line('M-8 -18V18');
+    line('M-8 -8L20 -26V-40'); line('M-8 8L20 26V40');
+    g.append(el('path', { d: 'M12 22L20 26L16 18Z', class: 'plate', fill: '#aab3bf' }));
+    g.append(el('circle', { cx: 4, cy: 0, r: 30, class: 'trcircle' + (st === 'sat' ? ' sat' : st === 'act' ? ' act' : '') }));
+  } else if (t === 'gate') {
+    const fn = comp?.props.fn || plan?.props?.fn || 'and', hi = !!sim?.comps[part.id]?.high;
+    const stroke = hi ? '#3ecf8e' : '#aab3bf';
+    if (fn === 'not') {
+      line('M-40 0H-12'); line('M20 0H40');
+      g.append(el('path', { d: 'M-12 -14V14L16 0Z', class: 'gateshape', stroke }), el('circle', { cx: 19, cy: 0, r: 3.5, class: 'gateshape', stroke }));
+    } else {
+      line('M-40 -10H-14'); line('M-40 10H-14');
+      const inv = fn === 'nand' || fn === 'nor' || fn === 'xnor', out = inv ? 36 : 40;
+      line(`M${inv ? 25 : 22} 0H40`);
+      if (fn === 'and' || fn === 'nand') g.append(el('path', { d: 'M-14 -16V16H4A16 16 0 0 0 4 -16Z', class: 'gateshape', stroke }));
+      else {
+        g.append(el('path', { d: 'M-18 -16Q-6 0 -18 16Q10 16 22 0Q10 -16 -18 -16Z', class: 'gateshape', stroke }));
+        if (fn === 'xor' || fn === 'xnor') g.append(el('path', { d: 'M-24 -16Q-12 0 -24 16', class: 'gateshape', stroke }));
+      }
+      if (inv) g.append(el('circle', { cx: 25 + 0, cy: 0, r: 3.5, class: 'gateshape', stroke }));
+    }
+  } else if (t === 'switch') {
+    // common (-40,0), low (40,14), high (40,-14)
+    const on = !!comp?.props.on;
+    line('M-40 0H-18'); line('M18 -14H40'); line('M18 14H40');
+    g.append(el('circle', { cx: -18, cy: 0, r: 3, class: 'contact' }), el('circle', { cx: 18, cy: -14, r: 3, class: 'contact' }), el('circle', { cx: 18, cy: 14, r: 3, class: 'contact' }));
+    g.append(el('path', { d: on ? 'M-18 0L16 -12' : 'M-18 0L16 12', class: 'wirep bridge' + (on ? ' on' : '') }));
   } else if (t === 'button') {
     const pr = !!comp?.props.pressed;
     line('M-40 0H-14'); line('M14 0H40');
@@ -67,7 +98,7 @@ export function createSchematicView(host, schematic, cb = {}) {
 
   // viewBox from the drawing
   const xs = [], ys = [];
-  for (const p of schematic.parts) { const h = p.rot === 90 ? [0, 2] : [2, 0]; xs.push((p.x - h[0]) * U, (p.x + h[0]) * U); ys.push((p.y - h[1]) * U, (p.y + h[1]) * U); if (p.type === 'pot') ys.push((p.y - 2) * U); }
+  for (const p of schematic.parts) { const h = p.rot === 90 ? [0, 2] : [2, 0]; xs.push((p.x - h[0]) * U, (p.x + h[0]) * U); ys.push((p.y - h[1]) * U, (p.y + h[1]) * U); if (p.type === 'pot') ys.push((p.y - 2) * U); if (['transistor', 'gate', 'switch'].includes(p.type)) ys.push((p.y - 2) * U, (p.y + 2) * U); }
   for (const w of schematic.wires) for (const [x, y] of w.pts) { xs.push(x * U); ys.push(y * U); }
   const pad = 48;
   const x0 = Math.min(...xs) - pad, x1 = Math.max(...xs) + pad + 56, y0 = Math.min(...ys) - pad, y1 = Math.max(...ys) + pad;
@@ -85,20 +116,21 @@ export function createSchematicView(host, schematic, cb = {}) {
       const ghost = !comp;
       const s = comp ? sim?.comps[comp.id] : null;
       const g = el('g', { class: 'spart' + (ghost ? ' ghost' : '') + (m.selected === part.id ? ' sel' : ''), transform: `translate(${part.x * U} ${part.y * U}) rotate(${part.rot || 0})` });
-      if (m.selected === part.id) g.append(el('rect', { x: -48, y: part.type === 'pot' ? -46 : -24, width: 96, height: part.type === 'pot' ? 70 : 48, rx: 10, class: 'selbox' }));
+      const TL = ['transistor', 'gate', 'switch'].includes(part.type);
+      if (m.selected === part.id) g.append(el('rect', { x: -48, y: part.type === 'pot' ? -46 : TL ? -46 : -24, width: 96, height: part.type === 'pot' ? 70 : TL ? 92 : 48, rx: 10, class: 'selbox' }));
       g.append(symbol({ ...part }, comp, plan, sim));
-      const hit = el('rect', { x: -44, y: part.type === 'pot' ? -44 : -26, width: 88, height: part.type === 'pot' ? 68 : 52, fill: 'transparent', class: 'hit' });
+      const hit = el('rect', { x: -44, y: part.type === 'pot' ? -44 : TL ? -44 : -26, width: 88, height: part.type === 'pot' ? 68 : TL ? 88 : 52, fill: 'transparent', class: 'hit' });
       g.append(hit);
       gParts.append(g);
       if (!ghost) hit.addEventListener('click', () => cb.onSelect?.(part.id));
       // labels, unrotated
       const rot90 = part.rot === 90;
       const lx = part.x * U + (rot90 ? 28 : 0), anchor = rot90 ? 'start' : 'middle';
-      const ly = part.y * U + (rot90 ? -2 : part.type === 'pot' ? 28 : -22);
+      const ly = part.y * U + (rot90 ? -2 : part.type === 'pot' ? 28 : TL ? 58 : -22);
       const lab = el('g', { class: 'slabel' + (ghost ? ' ghost' : '') });
       const val = valueText(part.type, comp, plan);
       lab.append(el('text', { x: lx, y: ly, 'text-anchor': anchor, class: 'sid' }, [el('tspan', { text: part.id }), val ? el('tspan', { text: '  ' + val, class: 'sval' }) : null]));
-      if (s && Math.abs(s.i) > 50e-6 && !ghost) lab.append(el('text', { x: lx, y: ly + (rot90 ? 16 : (part.type === 'pot' ? 16 : 40)), 'text-anchor': anchor, class: 'scur', text: fmt(Math.abs(s.i), 'A') }));
+      if (s && Math.abs(s.i) > 50e-6 && !ghost) lab.append(el('text', { x: lx, y: ly + (rot90 ? 16 : (part.type === 'pot' || TL ? 16 : 40)), 'text-anchor': anchor, class: 'scur', text: fmt(Math.abs(s.i), 'A') }));
       gParts.append(lab);
     }
     const items = [];

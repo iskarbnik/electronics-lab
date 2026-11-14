@@ -5,6 +5,7 @@ import { getComp, addComp, removeComp, usedHoles } from '../sim/circuit.js';
 import { parseHole, stripOf, nearestHole, COLS } from '../sim/board.js';
 import { fmt, fmtF } from '../sim/format.js';
 import { createBoardView, hitComp } from './boardView.js';
+import { createScope, TIME_DIVS } from './scope.js';
 import { KitBoard, Runner, newKit, newLabCircuit } from '../arduino/kit.js';
 import { EXAMPLES } from '../arduino/examples.js';
 
@@ -67,6 +68,11 @@ export function mountArduinoLab(root, opts = {}) {
         <div class="labstatus" role="status"></div>
         <div class="monhead"><b class="montitle"></b><button class="btn small ghost clr" type="button"></button></div>
         <pre class="mon" dir="ltr" aria-live="off"></pre>
+        <details class="scopebox"><summary class="scopesum"></summary>
+          <div class="scopectl"><label><span class="ch1l"></span> <select class="ch1" dir="ltr"></select></label><label><span class="ch2l"></span> <select class="ch2" dir="ltr"></select></label>
+            <label><span class="tdl"></span> <select class="tdiv" dir="ltr"></select></label><button class="btn small ghost freeze" type="button"></button></div>
+          <div class="scopehost"></div><div class="scoperead" dir="ltr"></div>
+        </details>
         <form class="serin"><input class="serline" dir="ltr" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"><label class="nl"><input class="nlbox" type="checkbox" checked> <span></span></label><button class="btn small sendb" type="submit"></button></form>
       </section>
     </div>`;
@@ -77,6 +83,8 @@ export function mountArduinoLab(root, opts = {}) {
     guide: q('.guide'), pinsum: q('.labpins summary'), pinhelp: q('.pinhelp'), pinlist: q('.labpins ul'), pot: q('.potlbl'), potin: q('.potin'),
     exlbl: q('.extxt'), sel: q('.exsel'), run: q('.run'), stop: q('.stop'), reset: q('.resetb'), code: q('.code'), status: q('.labstatus'),
     monTitle: q('.montitle'), clr: q('.clr'), mon: q('.mon'), serform: q('.serin'), serline: q('.serline'), nlbox: q('.nlbox'), nltxt: q('.nl span'), send: q('.sendb'),
+    scopeBox: q('.scopebox'), scopeSum: q('.scopesum'), ch1: q('.ch1'), ch2: q('.ch2'), tdiv: q('.tdiv'), freeze: q('.freeze'), scopeRead: q('.scoperead'),
+    ch1l: q('.ch1l'), ch2l: q('.ch2l'), tdl: q('.tdl'),
   };
 
   // ---------- state ----------
@@ -118,6 +126,9 @@ export function mountArduinoLab(root, opts = {}) {
     E.run.textContent = t('ard.run'); E.stop.textContent = t('ard.stop'); E.reset.textContent = t('ard.reset');
     E.monTitle.textContent = t('ard.serial'); E.clr.textContent = t('ard.clear');
     E.send.textContent = t('ard.send'); E.nltxt.textContent = t('ard.newline'); E.serline.setAttribute('aria-label', t('ard.sendph')); E.serline.placeholder = t('ard.sendph');
+    E.scopeSum.textContent = t('ard.scope'); E.ch1l.textContent = t('scope.ch1'); E.ch2l.textContent = t('scope.ch2'); E.tdl.textContent = t('scope.tdiv');
+    E.freeze.textContent = scopeFrozen !== null ? t('scope.run') : t('scope.freeze');
+    [E.ch1, E.ch2].forEach((sel, k) => { sel.options[0].textContent = t('scope.off'); });
     E.loadkit.textContent = t('ard.loadKit'); E.clearb.textContent = t('ard.clearBoard');
     E.code.setAttribute('aria-label', t('ard.code'));
     el.querySelector('.back').setAttribute('aria-label', t('lesson.homeAria'));
@@ -252,7 +263,7 @@ export function mountArduinoLab(root, opts = {}) {
   }
   E.loadkit.addEventListener('click', () => { stop(); kit = new KitBoard(newKit()); afterNewBoard(); });
   E.clearb.addEventListener('click', () => { stop(); kit = new KitBoard(newLabCircuit(false)); afterNewBoard(); });
-  function afterNewBoard() { selection = null; pending = null; kit.dirty = true; needDraw = true; saveCircuit(); renderCard(); setStatus(null); shownOut = ''; E.mon.textContent = ''; syncPot(); }
+  function afterNewBoard() { if (scopeOpen()) wireScope(); selection = null; pending = null; kit.dirty = true; needDraw = true; saveCircuit(); renderCard(); setStatus(null); shownOut = ''; E.mon.textContent = ''; syncPot(); }
   const potComp = () => getComp(kit.circuit, 'P1');
   function syncPot() { const p = potComp(); E.potin.closest('label').hidden = !p || p.type !== 'pot'; if (p) E.potin.value = p.props.pos; }
   E.potin.addEventListener('input', () => { const p = potComp(); if (p) { p.props.pos = +E.potin.value; kit.dirty = true; needDraw = true; saveCircuit(); } });
@@ -273,7 +284,7 @@ export function mountArduinoLab(root, opts = {}) {
       if (runner.error) { setStatus({ error: runner.error }); runner = null; needDraw = true; }
       else if (runner.finished) { setStatus('done'); needDraw = true; }
     }
-    if (kit.hasCap) { kit.advance(dt); needDraw = true; }
+    if (kit.hasCap || (kit.scope && scopeOpen())) { kit.advance(dt); needDraw = true; drawScope(); }
     else if (kit.dirty) { kit.refresh(); needDraw = true; }
     if (running()) kit.observe(dt * 1000);
     if (needDraw) {
@@ -358,6 +369,26 @@ export function mountArduinoLab(root, opts = {}) {
       if (last) { progress.markDone(lesson.id); const i = (opts.lessons || []).findIndex(l => l.id === lesson.id), nxt = (opts.lessons || [])[i + 1]; if (nxt) opts.onOpen?.(nxt.id); else opts.onHome?.(); }
       else enterStep(stepIdx + 1);
     });
+  }
+
+  // ---------- oscilloscope ----------
+  const scope = createScope(q('.scopehost'));
+  let scopeFrozen = null;
+  const scopeNames = ['', ...kit.uno.props.names.filter(n => n !== '5V' && n !== 'GND'), '5V'];
+  for (const sel of [E.ch1, E.ch2]) for (const n of scopeNames) { const o = document.createElement('option'); o.value = n; o.textContent = n; sel.append(o); }
+  E.ch1.value = 'D13'; E.ch2.value = '';
+  for (const d of TIME_DIVS) { const o = document.createElement('option'); o.value = d; o.textContent = d >= 1 ? d + ' s' : d * 1000 + ' ms'; E.tdiv.append(o); }
+  E.tdiv.value = 0.5;
+  const scopeOpen = () => E.scopeBox.open;
+  function wireScope() { kit.scope = { pins: [E.ch1.value, E.ch2.value], t: [], a: [], b: [] }; }
+  for (const sel of [E.ch1, E.ch2]) sel.addEventListener('change', wireScope);
+  E.scopeBox.addEventListener('toggle', () => { if (scopeOpen()) wireScope(); else kit.scope = null; });
+  E.freeze.addEventListener('click', () => { scopeFrozen = scopeFrozen === null ? (kit.scope?.t.at(-1) ?? 0) : null; E.freeze.textContent = scopeFrozen !== null ? t('scope.run') : t('scope.freeze'); });
+  function drawScope() {
+    if (!scopeOpen() || !kit.scope) return;
+    scope.draw(kit.scope, +E.tdiv.value, scopeFrozen);
+    const last = i => kit.scope.t.length ? kit.scope[i === 0 ? 'a' : 'b'].at(-1) : null;
+    E.scopeRead.innerHTML = [0, 1].map(i => kit.scope.pins[i] ? `<span class="c${i}">${kit.scope.pins[i]}: ${last(i) === null ? '' : fmt(last(i), 'V')}</span>` : '').join(' ');
   }
 
   // ---------- language ----------
