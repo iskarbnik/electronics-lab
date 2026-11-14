@@ -31,7 +31,7 @@ Bilingual (Hebrew RTL + English) installable PWA that teaches electronics on a l
 
 ## Phase plan
 1. Foundation: simulator, lesson engine, 10 lessons, PWA, i18n (done).
-2. Capacitors, diodes, oscilloscope, transistor (done: lessons 17 to 20). Still open: time-domain circuits, oscilloscope, calculators, parts encyclopedia.
+2. Capacitors, diodes, oscilloscope, transistor (done: lessons 17 to 20). Still open: calculators, parts encyclopedia.
 3. Logic gates (done: lessons 11 to 16).
 4. Arduino Uno with an in-app interpreter for a subset of Arduino code.
 5. Sandbox, challenges, quizzes, badges, AI tutor.
