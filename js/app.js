@@ -2,14 +2,16 @@
 import { initLang, setLang, getLang, onLang, t, L, ltr } from './i18n.js';
 import * as store from './store.js';
 import { mountLesson } from './ui/lessonPlayer.js';
+import { mountTools, mountParts } from './ui/pages.js';
 
 const app = document.getElementById('app');
 let LESSONS = [];
 let player = null;
+let page = null;
 let loadError = false;
 
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const SOON = ['soon.parts', 'soon.arduino', 'soon.sandbox', 'soon.esp'];
+const SOON = ['soon.arduino', 'soon.sandbox', 'soon.esp'];
 
 function langSwitch() {
   const cur = getLang();
@@ -42,6 +44,7 @@ function renderHome() {
     <p class="tagline">${esc(t('home.tagline'))}</p>
     <div class="progress"><div class="ptext">${t('home.progress', { n: ltr(n), m: ltr(total) })}</div>
       <div class="pbar big" role="progressbar" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${n}"><i style="width:${total ? n / total * 100 : 0}%"></i></div></div>
+    <nav class="quick"><a class="qlink" href="#/tools"><b>${esc(t('tools.title'))}</b><span>${esc(t('tools.sub'))}</span></a><a class="qlink" href="#/parts"><b>${esc(t('parts.title'))}</b><span>${esc(t('parts.sub'))}</span></a></nav>
     ${loadError ? `<p class="err">${esc(t('lesson.loadError'))}</p>` : units}
     <h2 class="dim">${esc(t('home.next'))}</h2>
     <ul class="soon">${SOON.map(k => `<li>${esc(t(k))}</li>`).join('')}</ul>
@@ -69,6 +72,13 @@ function route() {
   if (player) { player.destroy(); player = null; }
   const m = /^#\/lesson\/([\w-]+)/.exec(location.hash);
   document.body.classList.toggle('in-lesson', !!m);
+  page = /^#\/(tools|parts)\b/.exec(location.hash)?.[1] || null;
+  if (page) {
+    app.innerHTML = ''; window.scrollTo(0, 0);
+    document.title = `${t(page + '.title')} | ${t('app.name')}`;
+    player = page === 'tools' ? mountTools(app) : mountParts(app, LESSONS);
+    return;
+  }
   if (!m) { app.innerHTML = ''; window.scrollTo(0, 0); return renderHome(); }
   const lesson = LESSONS.find(l => l.id === m[1]);
   if (!lesson) { location.hash = '#/'; return; }
@@ -82,7 +92,8 @@ function route() {
 }
 
 onLang(() => {
-  if (!player) renderHome();
+  if (page) route();
+  else if (!player) renderHome();
   else { const l = LESSONS.find(x => location.hash.endsWith(x.id)); if (l) document.title = `${L(l.title)} | ${t('app.name')}`; }
 });
 

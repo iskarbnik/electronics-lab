@@ -1,6 +1,6 @@
 // Service worker: precache the app shell, then network first with cache fallback.
 // Bump VERSION whenever any app file changes so old caches are dropped.
-const VERSION = 'elab-v6';
+const VERSION = 'elab-v7';
 const FILES = [
   './',
   'index.html',
@@ -9,13 +9,16 @@ const FILES = [
   'js/app.js',
   'js/i18n.js',
   'js/store.js',
+  'js/parts.js',
   'js/ui/boardView.js',
   'js/ui/schematicView.js',
   'js/ui/lessonPlayer.js',
   'js/ui/svg.js',
+  'js/ui/pages.js',
   'js/sim/board.js',
   'js/sim/circuit.js',
   'js/sim/format.js',
+  'js/sim/calc.js',
   'js/sim/logic.js',
   'js/sim/solver.js',
   'js/lessons/common.js',

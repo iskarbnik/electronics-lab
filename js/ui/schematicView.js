@@ -23,7 +23,7 @@ function valueText(type, comp, plan) {
 }
 
 // Symbols in local coordinates: pin0 at (-40, 0), pin1 at (40, 0).
-function symbol(part, comp, plan, sim) {
+export function symbol(part, comp, plan, sim) {
   const g = el('g', { class: 'sym' });
   const line = (d, cls = '') => g.append(el('path', { d, class: 'wirep ' + cls }));
   const t = part.type;

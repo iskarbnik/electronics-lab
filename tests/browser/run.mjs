@@ -187,6 +187,9 @@ async function offlineCheck() {
 
 for (const cfg of CONFIGS) {
   console.log(cfg.name);
+  const { PARTS } = await import(pathToFileURL(join(ROOT, 'js/parts.js')));
+  const { pagesCheck } = await import('./pages.mjs');
+  await pagesCheck({ browser, cfg, BASE, PARTS, fail, shot });
   for (const lesson of LESSONS) await playLesson(cfg, lesson);
 }
 console.log('offline');
