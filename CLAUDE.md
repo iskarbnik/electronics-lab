@@ -19,6 +19,7 @@ Bilingual (Hebrew RTL + English) installable PWA that teaches electronics on a l
 - Burn rule: an LED over 50 mA is marked `burned` and stays dead until replaced. A resistor over 1/4 W is flagged `hot`.
 
 ## Rules
+- HARD RULE: if you do not know something, do not guess. Check it, and confirm it against the official source for that topic (for example the official documentation of the tool, standard or part). Give the source with a link. If you cannot confirm it, say so clearly.
 - HARD RULE: always write in plain English. Use short, simple words, and explain any technical term the first time you use it. This applies to every reply, commit message and PR description, in every session.
 - No build step, no npm dependencies, no framework. All URLs relative.
 - Every user-facing string exists in both Hebrew and English.
