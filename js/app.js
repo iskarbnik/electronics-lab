@@ -9,7 +9,7 @@ let player = null;
 let loadError = false;
 
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const SOON = ['soon.parts', 'soon.scope', 'soon.enc', 'soon.arduino', 'soon.sandbox', 'soon.esp'];
+const SOON = ['soon.parts', 'soon.arduino', 'soon.sandbox', 'soon.esp'];
 
 function langSwitch() {
   const cur = getLang();

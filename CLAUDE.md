@@ -4,7 +4,7 @@ Bilingual (Hebrew RTL + English) installable PWA that teaches electronics on a l
 
 ## Architecture
 - `js/sim/`: simulator. `board.js` geometry and strips, `circuit.js` components and `simulate()`, `solver.js`, `format.js` (`fmt`, resistor `bands`), `logic.js` (gate functions, truth tables).
-- `js/lessons/`: `index.js` exports `LESSONS`; `l01..l19-*.js` one file per lesson (`unit: 2` logic, `unit: 3` diode, capacitor and scope, grouped on the home screen), `logic.js` shared board/schematic layout of the gate lessons; `common.js` step constructors; `engine.js` `applyStep` / `buildCircuit`.
+- `js/lessons/`: `index.js` exports `LESSONS`; `l01..l20-*.js` one file per lesson (`unit: 2` logic, `unit: 3` diode, capacitor, scope and transistor, grouped on the home screen), `logic.js` shared board/schematic layout of the gate lessons; `common.js` step constructors; `engine.js` `applyStep` / `buildCircuit`.
 - `js/ui/`: `lessonPlayer.js` (the lesson screen, exposes `window.__elab.player.debug`), `boardView.js`, `schematicView.js`, `svg.js`.
 - `js/app.js` router and home screen, `js/i18n.js` strings (`t`, `L`, `ltr`, `bidi`), `js/store.js` progress in localStorage, `sw.js` service worker.
 - Lesson: `{ id, title, summary, schematic, setup:[step], steps:[step] }`. All text is `{ he, en }` and may hold simple HTML. Step types: info, explore, wire, place, measure, do (select/flip/remove/replace/set/press/turn/toggle/setfn/wait, with `auto` and `until`; a step may set `meter: {red, black}` to show the multimeter preset), quiz. `lesson.truth = 'G1'` shows that gate's truth table above the board. Any step may have `expect(sim, circuit)`, checked by tests.
@@ -15,6 +15,7 @@ Bilingual (Hebrew RTL + English) installable PWA that teaches electronics on a l
 - Signs: `v = V(pin0) - V(pin1)`, current `i` flows pin0 to pin1; battery `i` is the current it delivers from +. LED pins are `[anode, cathode]`. Pot pins `[A, wiper, B]`, R(A-wiper) = r * pos.
 - Switch `{on}` is a latching button. Gate pins `[A, B, Y]` or `[A, Y]` (NOT), props `{fn}`, placed in consecutive holes of one row like the pot. Inputs are high impedance and read 1 above half the battery voltage; the output is tied through 25 ohm to BAT+ (1) or BAT- (0), so the battery supplies the current. Power pins are implicit. Output state persists in `comp.out`.
 - Diode pins `[anode, cathode]`, vf 0.7, same piecewise model as the LED. Capacitor pins `[+, -]`, props `{c, vc}` (farads, stored volts), backward Euler: `simulate(c)` holds the stored voltage, `simulate(c, dt)` advances time and updates `vc`, `advance(c, seconds)` runs several steps. The lesson player runs time live in real time while a capacitor is on the board.
+- Transistor (NPN) pins `[C, B, E]`, props `{beta}` (default 100), placed in three holes in a row like the pot. Base to emitter is a 0.7 V diode. Result has `state` (`off`, `active`, `sat`), `i` (collector current), `ib` (base current), `v` (collector to emitter). Active: `i = beta * ib`. Saturated: collector sits about 0.2 V above the emitter.
 - Burn rule: an LED over 50 mA is marked `burned` and stays dead until replaced. A resistor over 1/4 W is flagged `hot`.
 
 ## Rules
@@ -30,7 +31,7 @@ Bilingual (Hebrew RTL + English) installable PWA that teaches electronics on a l
 
 ## Phase plan
 1. Foundation: simulator, lesson engine, 10 lessons, PWA, i18n (done).
-2. Capacitors, diodes (done: lessons 17, 18), transistors, time-domain circuits, oscilloscope, calculators, parts encyclopedia.
+2. Capacitors, diodes, oscilloscope, transistor (done: lessons 17 to 20). Still open: time-domain circuits, oscilloscope, calculators, parts encyclopedia.
 3. Logic gates (done: lessons 11 to 16).
 4. Arduino Uno with an in-app interpreter for a subset of Arduino code.
 5. Sandbox, challenges, quizzes, badges, AI tutor.

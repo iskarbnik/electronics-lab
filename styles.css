@@ -301,3 +301,8 @@ html[dir="rtl"] .iconbtn.sm { margin: -6px 0 -6px -8px; }
 .sgl { fill: #6b7a8c; font: 9px var(--mono); }
 .slegend { display: flex; gap: 8px; align-items: center; font-size: .8rem; color: #c7d0dc; }
 .slegend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-inline-end: 4px; }
+
+/* ---------- transistor ---------- */
+.qbody { fill: #1c1f24; stroke: #4b5563; stroke-width: 1.5; }
+.qbody.on { stroke: #6ee7a8; }
+.qarrow { fill: #c7d0dc; stroke: #c7d0dc; stroke-width: 1.5; stroke-linejoin: round; }

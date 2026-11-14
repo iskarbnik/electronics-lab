@@ -17,6 +17,9 @@ const WIRE_R = 0.01;
 const BATTERY_R = 0.5;
 const GATE_R = 25;   // output resistance of a gate pin, like a 74HC chip
 const GMIN = 1e-9;
+const BJT_VBE = 0.7;    // base to emitter drop of a conducting transistor
+const BJT_VSAT = 0.2;   // collector to emitter voltage when fully on
+const BJT_RSAT = 1;
 const HOLD_DT = 1e-6;  // a static solve holds each capacitor at its stored voltage
 
 const DEFAULTS = {
@@ -28,6 +31,7 @@ const DEFAULTS = {
   pot: () => ({ r: 10000, pos: 0.5 }),
   switch: () => ({ on: false }),
   diode: () => ({ vf: 0.7 }),
+  transistor: () => ({ beta: 100 }),
   capacitor: () => ({ c: 0.001, vc: 0 }),
   gate: () => ({ fn: 'and' }),
 };
@@ -59,6 +63,7 @@ function solveOnce(circuit, dt = 0) {
   const plus = node('BAT+');
   const vcc = circuit.comps.find(c => c.type === 'battery')?.props.v ?? 9;
   const els = [];
+  const bjts = [];
   for (const c of circuit.comps) {
     const n = c.pins.map(node);
     const add = (a, b, g, is = 0, extra = {}) => els.push({ c, a, b, g, is, ...extra });
@@ -68,6 +73,7 @@ function solveOnce(circuit, dt = 0) {
     else if (c.type === 'button') { if (c.props.pressed) add(n[0], n[1], 1 / WIRE_R); }
     else if (c.type === 'capacitor') { const g = c.props.c / (dt || HOLD_DT); add(n[0], n[1], g, g * c.props.vc); }
     else if (c.type === 'diode') add(n[0], n[1], 0, 0, { led: true, on: true });
+    else if (c.type === 'transistor') bjts.push({ c, C: n[0], B: n[1], E: n[2], on: true, sat: false });
     else if (c.type === 'switch') { if (c.props.on) add(n[0], n[1], 1 / WIRE_R); }
     else if (c.type === 'gate') {
       // Inputs are high impedance. The output pin is tied through a small resistance to + when the
@@ -93,9 +99,34 @@ function solveOnce(circuit, dt = 0) {
       A[e.a][e.a] += e.g; A[e.b][e.b] += e.g; A[e.a][e.b] -= e.g; A[e.b][e.a] -= e.g;
       b[e.a] += e.is; b[e.b] -= e.is;
     }
+    // NPN transistor, pins [C, B, E]. The base to emitter path is a diode. While active the collector
+    // current is beta times the base current (stamped as a controlled source, so it is exact). When
+    // that would pull the collector below about 0.2 V it is saturated: collector tied to emitter.
+    for (const q of bjts) {
+      const gd = q.on ? 1 / LED_RS : GMIN, isd = q.on ? BJT_VBE / LED_RS : 0;
+      A[q.B][q.B] += gd; A[q.E][q.E] += gd; A[q.B][q.E] -= gd; A[q.E][q.B] -= gd;
+      b[q.B] += isd; b[q.E] -= isd;
+      if (q.on && q.sat) {
+        const g = 1 / BJT_RSAT, is = BJT_VSAT * g;
+        A[q.C][q.C] += g; A[q.E][q.E] += g; A[q.C][q.E] -= g; A[q.E][q.C] -= g;
+        b[q.C] += is; b[q.E] -= is;
+      } else if (q.on) {
+        const k = q.c.props.beta * gd, ks = q.c.props.beta * isd;
+        A[q.C][q.B] += k; A[q.C][q.E] -= k; b[q.C] += ks;
+        A[q.E][q.B] -= k; A[q.E][q.E] += k; b[q.E] -= ks;
+      }
+    }
     A[ground].fill(0); A[ground][ground] = 1; b[ground] = 0;
     V = solveLinear(A, b);
     let changed = false;
+    for (const q of bjts) {
+      const vbe = V[q.B] - V[q.E], vce = V[q.C] - V[q.E];
+      const ib = q.on ? (vbe - BJT_VBE) / LED_RS : 0;
+      if (q.on && ib < -1e-12) { q.on = false; q.sat = false; changed = true; }
+      else if (!q.on && vbe > BJT_VBE + 1e-9) { q.on = true; q.sat = false; changed = true; }
+      else if (q.on && !q.sat && vce < BJT_VSAT - 1e-9) { q.sat = true; changed = true; }
+      else if (q.on && q.sat && (vce - BJT_VSAT) / BJT_RSAT > q.c.props.beta * ib + 1e-12) { q.sat = false; changed = true; }
+    }
     for (const e of els) {
       if (e.gate) {
         const out = gateEval(e.c.props.fn, e.ins.map(k => V[k] - V[ground] > vcc / 2));
@@ -126,6 +157,13 @@ function solveOnce(circuit, dt = 0) {
       if (e.part === 0) { r.v = dv; r.i = i; }
       r.p += Math.abs(dv * i);
     } else { r.v = dv; r.i = i; r.p = Math.abs(dv * i); }
+  }
+  for (const q of bjts) {
+    const r = comps[q.c.id], vbe = V[q.B] - V[q.E], vce = V[q.C] - V[q.E];
+    r.ib = q.on ? Math.max(0, (vbe - BJT_VBE) / LED_RS) : 0;
+    r.i = !q.on ? 0 : q.sat ? (vce - BJT_VSAT) / BJT_RSAT : q.c.props.beta * r.ib;
+    r.v = vce; r.vbe = vbe; r.p = Math.abs(vce * r.i) + Math.abs(vbe * r.ib);
+    r.state = !q.on ? 'off' : q.sat ? 'sat' : 'active';
   }
   for (const c of circuit.comps) {
     const r = comps[c.id];

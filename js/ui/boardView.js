@@ -7,7 +7,7 @@ const reduceMotion = () => globalThis.matchMedia?.('(prefers-reduced-motion: red
 
 // ---------- geometry helpers (also used by the player) ----------
 const pinPos = c => c.pins.map(holePos);
-export const hasBody = c => c.type === 'pot' || c.type === 'gate' || c.type === 'capacitor';
+export const hasBody = c => c.type === 'pot' || c.type === 'gate' || c.type === 'capacitor' || c.type === 'transistor';
 export function potBody(c) {
   const ps = pinPos(c), a = ps[0], b = ps[ps.length - 1];
   return { x: a.x - 14, y: a.y - 48, w: b.x - a.x + 28, h: 34 };
@@ -302,6 +302,17 @@ export function createBoardView(host, cb = {}) {
       grp.append(el('circle', { cx: kx, cy: ky, r: 12.5, class: 'knob' }));
       grp.append(el('line', { x1: kx, y1: ky, x2: kx, y2: ky - 10, class: 'knobptr', transform: `rotate(${ang} ${kx} ${ky})` }));
       for (const p of [pa, pw, pb]) grp.append(plug(p));
+    }
+    else if (c.type === 'transistor') {
+      const body = potBody(c), s = st.sim || {};
+      ps.forEach((p, k) => {
+        grp.append(el('line', { x1: p.x, y1: p.y, x2: p.x, y2: body.y + body.h, class: 'leg' }));
+        grp.append(el('text', { x: p.x, y: body.y + body.h - 4, text: 'CBE'[k], class: 'gpin', 'text-anchor': 'middle' }));
+      });
+      const cx = body.x + body.w / 2, w = body.w - 12, top = body.y, bot = body.y + body.h - 12;
+      grp.append(el('path', { d: `M${cx - w / 2} ${bot}V${top + 8}A${w / 2} 10 0 0 1 ${cx + w / 2} ${top + 8}V${bot}Z`, class: 'qbody' + (s.state && s.state !== 'off' ? ' on' : '') }));
+      grp.append(el('text', { x: cx, y: top + 16, text: 'NPN', class: 'gatetext', 'text-anchor': 'middle' }));
+      for (const p of ps) grp.append(plug(p));
     }
     else if (c.type === 'diode') {
       const [a, b] = ps, d = Math.hypot(b.x - a.x, b.y - a.y), ang = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;

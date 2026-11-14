@@ -256,3 +256,33 @@ test('an auto switch is a square wave that follows simulated time', () => {
   simulate(c, 0.6); assert.equal(getComp(c, 'S').props.on, false);
   advance(c, 1); assert.equal(getComp(c, 'S').props.on, true);
 });
+
+// ---------- transistor ----------
+function qBoard(rb) {
+  const c = newCircuit();
+  addComp(c, { id: 'WP', type: 'wire', pins: ['BAT+', 'p+1'] });
+  addComp(c, { id: 'WN', type: 'wire', pins: ['BAT-', 'p-1'] });
+  addComp(c, { id: 'W1', type: 'wire', pins: ['p+5', 'a5'] });
+  addComp(c, { id: 'D1', type: 'led', pins: ['b5', 'b6'] });
+  addComp(c, { id: 'R1', type: 'resistor', pins: ['a6', 'a10'], props: { r: 470 } });
+  addComp(c, { id: 'Q1', type: 'transistor', pins: ['e10', 'e11', 'e12'] });
+  addComp(c, { id: 'WE', type: 'wire', pins: ['a12', 'p-12'] });
+  if (rb) addComp(c, { id: 'RB', type: 'resistor', pins: ['b11', 'p+11'], props: { r: rb } });
+  return c;
+}
+
+test('transistor is off with no base current, saturated with plenty, and amplifies in between', () => {
+  let s = simulate(qBoard(0));
+  assert.equal(s.comps.Q1.state, 'off');
+  assert.ok(!s.comps.D1.lit);
+  s = simulate(qBoard(10000));
+  assert.equal(s.comps.Q1.state, 'sat');
+  near(s.comps.Q1.ib, 0.00083, 0.00003);
+  near(s.comps.D1.i, 0.0142, 0.0005);
+  near(s.comps.Q1.v, 0.2, 0.05);
+  s = simulate(qBoard(1000000));
+  assert.equal(s.comps.Q1.state, 'active');
+  near(s.comps.Q1.i, 100 * s.comps.Q1.ib, 1e-9);
+  near(s.comps.D1.i, 0.00083, 0.00003);
+  near(s.comps.BAT.i, s.comps.D1.i + s.comps.Q1.ib, 1e-6);
+});

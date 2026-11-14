@@ -17,5 +17,6 @@ import l16 from './l16-half-adder.js';
 import l17 from './l17-diode.js';
 import l18 from './l18-capacitor.js';
 import l19 from './l19-scope.js';
+import l20 from './l20-transistor.js';
 
-export const LESSONS = [l01, l02, l03, l04, l05, l06, l07, l08, l09, l10, l11, l12, l13, l14, l15, l16, l17, l18, l19];
+export const LESSONS = [l01, l02, l03, l04, l05, l06, l07, l08, l09, l10, l11, l12, l13, l14, l15, l16, l17, l18, l19, l20];

@@ -17,9 +17,9 @@ const ICON = {
   x: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>',
   check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
-const CHIPS = [100, 220, 330, 470, 1000, 2200, 4700, 10000];
+const CHIPS = [100, 220, 330, 470, 1000, 2200, 4700, 10000, 100000, 1000000];
 const cleanV = v => (Math.abs(v) < 5e-4 ? 0 : v);
-const multi = k => k === 'pot' || k === 'gate';
+const multi = k => k === 'pot' || k === 'gate' || k === 'transistor';
 const isTerm = h => h === 'BAT+' || h === 'BAT-';
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -425,6 +425,7 @@ export function mountLesson(root, lesson, opts = {}) {
     if (c.type === 'battery') return fmt(c.props.v, 'V');
     if (c.type === 'pot') return fmt(c.props.r, 'Ω');
     if (c.type === 'gate') return c.props.fn.toUpperCase();
+    if (c.type === 'transistor') return 'NPN';
     if (c.type === 'capacitor') return `${+(c.props.c * 1e6).toFixed(1)} µF`;
     return '';
   }
@@ -444,6 +445,7 @@ export function mountLesson(root, lesson, opts = {}) {
     else if (c.type === 'led') { status = c.burned ? t('card.burned') : st.lit ? t('card.lit') : t('card.off'); bad = c.burned; }
     else if (c.type === 'button') status = c.props.pressed ? t('card.pressed') : t('card.released');
     else if (c.type === 'switch') status = c.props.on ? t('card.swon') : t('card.swoff');
+    else if (c.type === 'transistor') status = t('card.q.' + (st.state || 'off'), { ib: ltr(fmt(st.ib || 0, 'A')) });
     else if (c.type === 'diode') status = st.i > 1e-5 ? t('card.cond') : t('card.block');
     else if (c.type === 'gate') {
       const names = c.pins.length === 3 ? ['A', 'B'] : ['A'];
