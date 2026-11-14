@@ -293,3 +293,11 @@ html[dir="rtl"] .iconbtn.sm { margin: -6px 0 -6px -8px; }
 .capfill { fill: var(--amber); }
 .cappol { fill: #fff; font: 800 12px var(--sans); }
 .captext { fill: #dbe7f7; font: 700 9px var(--mono); }
+
+/* ---------- oscilloscope ---------- */
+.scopebox { flex: none; z-index: 3; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 12px; background: #0c1117; border-bottom: 1px solid var(--line); direction: inherit; }
+.scopebox svg { flex: 1 1 100%; height: 84px; max-height: 14vh; background: #070b10; border: 1px solid var(--line); border-radius: 8px; direction: ltr; }
+.sgrid { stroke: #24303f; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.sgl { fill: #6b7a8c; font: 9px var(--mono); }
+.slegend { display: flex; gap: 8px; align-items: center; font-size: .8rem; color: #c7d0dc; }
+.slegend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-inline-end: 4px; }

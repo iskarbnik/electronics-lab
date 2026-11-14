@@ -248,3 +248,11 @@ test('RC charging follows 1 - e^(-t/RC), holds its charge and discharges', () =>
   advance(c, 0.47);
   near(getComp(c, 'C1').props.vc, 9 * Math.exp(-1), 0.15);
 });
+
+test('an auto switch is a square wave that follows simulated time', () => {
+  const c = newCircuit();
+  addComp(c, { id: 'S', type: 'switch', pins: ['b2', 'b4'], props: { period: 2 } });
+  simulate(c, 0.5); assert.equal(getComp(c, 'S').props.on, true);
+  simulate(c, 0.6); assert.equal(getComp(c, 'S').props.on, false);
+  advance(c, 1); assert.equal(getComp(c, 'S').props.on, true);
+});

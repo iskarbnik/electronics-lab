@@ -4,7 +4,7 @@ Bilingual (Hebrew RTL + English) installable PWA that teaches electronics on a l
 
 ## Architecture
 - `js/sim/`: simulator. `board.js` geometry and strips, `circuit.js` components and `simulate()`, `solver.js`, `format.js` (`fmt`, resistor `bands`), `logic.js` (gate functions, truth tables).
-- `js/lessons/`: `index.js` exports `LESSONS`; `l01..l18-*.js` one file per lesson (`unit: 2` logic, `unit: 3` diode and capacitor, grouped on the home screen), `logic.js` shared board/schematic layout of the gate lessons; `common.js` step constructors; `engine.js` `applyStep` / `buildCircuit`.
+- `js/lessons/`: `index.js` exports `LESSONS`; `l01..l19-*.js` one file per lesson (`unit: 2` logic, `unit: 3` diode, capacitor and scope, grouped on the home screen), `logic.js` shared board/schematic layout of the gate lessons; `common.js` step constructors; `engine.js` `applyStep` / `buildCircuit`.
 - `js/ui/`: `lessonPlayer.js` (the lesson screen, exposes `window.__elab.player.debug`), `boardView.js`, `schematicView.js`, `svg.js`.
 - `js/app.js` router and home screen, `js/i18n.js` strings (`t`, `L`, `ltr`, `bidi`), `js/store.js` progress in localStorage, `sw.js` service worker.
 - Lesson: `{ id, title, summary, schematic, setup:[step], steps:[step] }`. All text is `{ he, en }` and may hold simple HTML. Step types: info, explore, wire, place, measure, do (select/flip/remove/replace/set/press/turn/toggle/setfn/wait, with `auto` and `until`; a step may set `meter: {red, black}` to show the multimeter preset), quiz. `lesson.truth = 'G1'` shows that gate's truth table above the board. Any step may have `expect(sim, circuit)`, checked by tests.

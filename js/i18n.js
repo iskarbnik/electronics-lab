@@ -84,6 +84,7 @@ const S = {
   'card.swon': ['On (closed)', 'דולק (סגור)'],
   'card.swoff': ['Off (open)', 'כבוי (פתוח)'],
   'card.gate': ['Inputs {ins}. Output Y={y}.', 'כניסות {ins}. מוצא Y={y}.'],
+  'scope.title': ['Oscilloscope', 'אוסילוסקופ'],
   'truth.title': ['Truth table', 'טבלת אמת'],
   'card.slider': ['Resistance, 0 Ω to 10 kΩ', 'התנגדות, מ-0 Ω עד 10 kΩ'],
   'card.rA': ['Wiper to A', 'מהמגלשה ל-A'],

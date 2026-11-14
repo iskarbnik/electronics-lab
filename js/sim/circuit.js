@@ -146,6 +146,11 @@ function solveOnce(circuit, dt = 0) {
 // Simulates the circuit. An LED that gets too much current burns out: this marks it in the
 // circuit itself and reports it in `events`.
 export function simulate(circuit, dt = 0) {
+  if (dt > 0) {
+    // Time passes: an auto switch (a square wave source) flips every half period.
+    circuit.t = (circuit.t || 0) + dt;
+    for (const c of circuit.comps) if (c.type === 'switch' && c.props.period) c.props.on = (circuit.t % c.props.period) < c.props.period / 2;
+  }
   const events = [];
   let res;
   for (let guard = 0; guard < 10; guard++) {

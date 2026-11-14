@@ -49,6 +49,7 @@ export function mountLesson(root, lesson, opts = {}) {
         <div class="banner" hidden></div>
         <div class="meterbox" hidden></div>
         <div class="truthbox" hidden></div>
+        <div class="scopebox" hidden></div>
         <div class="bhost"></div>
         <div class="toast" hidden role="status"></div>
         <div class="card" hidden></div>
@@ -67,7 +68,7 @@ export function mountLesson(root, lesson, opts = {}) {
   const $ = s => rootEl.querySelector(s);
   const E = {
     back: $('.back'), title: $('.ltitle h1'), stepLbl: $('.lstep'), meterBtn: $('.meterbtn'), fitBtn: $('.fitbtn'), bar: $('.pbar'),
-    bhost: $('.bhost'), meterBox: $('.meterbox'), truthBox: $('.truthbox'), banner: $('.banner'), toast: $('.toast'), card: $('.card'),
+    bhost: $('.bhost'), meterBox: $('.meterbox'), truthBox: $('.truthbox'), scopeBox: $('.scopebox'), banner: $('.banner'), toast: $('.toast'), card: $('.card'),
     schemPane: $('.schempane'), schemToggle: $('.schemtoggle'), shost: $('.shost'),
     text: $('.steptext'), quiz: $('.quiz'), hint: $('.hint'), bk: $('.bk'), nx: $('.nx'), complete: $('.complete'),
   };
@@ -97,6 +98,7 @@ export function mountLesson(root, lesson, opts = {}) {
     if (s.meter) probes = { red: s.meter.red, black: s.meter.black };
     if (passed.has(i) && (s.type === 'quiz' || s.type === 'explore')) { done = true; if (s.type === 'quiz') quizState = { picked: s.answer, right: true, wrong: false }; }
     store.setStep(lesson.id, i);
+    scopeData = [];
     sim = simulate(circuit);
     evalDone();
     ensureLoop();
@@ -152,7 +154,8 @@ export function mountLesson(root, lesson, opts = {}) {
 
   // Time runs live while a capacitor is on the board.
   let raf = 0, lastT = 0;
-  const hasCap = () => circuit.comps.some(c => c.type === 'capacitor');
+  let scopeData = [];
+  const hasCap = () => !!cur().scope || circuit.comps.some(c => c.type === 'capacitor' || (c.type === 'switch' && c.props.period));
   const vcs = () => circuit.comps.filter(c => c.type === 'capacitor').map(c => c.props.vc);
   function ensureLoop() {
     if (raf || complete || !hasCap()) return;
@@ -168,13 +171,18 @@ export function mountLesson(root, lesson, opts = {}) {
       sim = simulate(circuit, dt);
       for (const ev of sim.events) toast(t('toast.burn', { i: ltr(fmt(ev.i, 'A')) }));
       evalDone();
-      const moved = vcs().some((v, k) => Math.abs(v - before[k]) > 1e-6) || sim.events.length;
+      if (cur().scope) {
+        const T = circuit.t || 0, win = cur().scope.window || 4;
+        scopeData.push({ t: T, v: cur().scope.holes.map(h => voltageBetween(sim, h, 'BAT-')) });
+        while (scopeData.length && scopeData[0].t < T - win) scopeData.shift();
+      }
+      const moved = !!cur().scope || vcs().some((v, k) => Math.abs(v - before[k]) > 1e-6) || sim.events.length;
       if (moved) renderLive();
       if (done !== wasDone) renderPanel();
     }
     raf = requestAnimationFrame(tick);
   }
-  function renderLive() { renderMeter(); renderTruth(); renderBanner(); renderCard(); renderBoard(); renderSchem(); }
+  function renderLive() { renderScope(); renderScope(); renderMeter(); renderTruth(); renderBanner(); renderCard(); renderBoard(); renderSchem(); }
 
   function toast(html) {
     E.toast.innerHTML = bidi(html); E.toast.hidden = false;
@@ -386,6 +394,24 @@ export function mountLesson(root, lesson, opts = {}) {
     }).join('');
     const names = g.pins.length === 3 ? 'A B Y' : 'A Y';
     E.truthBox.innerHTML = `<span class="mtitle">${t('truth.title')} <bdi dir="ltr" class="tnames">${names}</bdi></span><span class="tchips">${chips}</span>`;
+  }
+
+  const SCOPE_COLORS = ['#ffc94d', '#6ee7a8'];
+  function renderScope() {
+    const sc = cur().scope;
+    E.scopeBox.hidden = !sc;
+    if (!sc) return;
+    const W = 300, H = 100, win = sc.window || 4, T = circuit.t || 0, vmax = 10;
+    const x = tt => ((tt - (T - win)) / win) * W, y = v => H - 6 - (Math.max(0, Math.min(vmax, v)) / vmax) * (H - 12);
+    let svg = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(t('scope.title'))}">`;
+    for (const gv of [0, 5, 10]) svg += `<line x1="0" x2="${W}" y1="${y(gv)}" y2="${y(gv)}" class="sgrid"/><text x="3" y="${y(gv) - 2}" class="sgl">${gv} V</text>`;
+    sc.holes.forEach((_, k) => {
+      const pts = scopeData.map(d => `${x(d.t).toFixed(1)},${y(d.v[k]).toFixed(1)}`).join(' ');
+      if (pts) svg += `<polyline points="${pts}" fill="none" stroke="${SCOPE_COLORS[k]}" stroke-width="2.2" stroke-linejoin="round"/>`;
+    });
+    svg += '</svg>';
+    const legend = sc.holes.map((_, k) => `<i style="background:${SCOPE_COLORS[k]}"></i>${bidi(L(sc.names[k]))}`).join(' ');
+    E.scopeBox.innerHTML = `<span class="mtitle">${t('scope.title')}</span><span class="slegend">${legend}</span>${svg}`;
   }
 
   function renderBanner() {
