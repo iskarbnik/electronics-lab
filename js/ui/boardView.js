@@ -7,9 +7,10 @@ const reduceMotion = () => globalThis.matchMedia?.('(prefers-reduced-motion: red
 
 // ---------- geometry helpers (also used by the player) ----------
 const pinPos = c => c.pins.map(holePos);
+export const hasBody = c => c.type === 'pot' || c.type === 'gate' || c.type === 'capacitor' || c.type === 'transistor';
 export function potBody(c) {
-  const [a, w, b] = pinPos(c);
-  return { x: a.x - 14, y: w.y - 48, w: b.x - a.x + 28, h: 34 };
+  const ps = pinPos(c), a = ps[0], b = ps[ps.length - 1];
+  return { x: a.x - 14, y: a.y - 48, w: b.x - a.x + 28, h: 34 };
 }
 
 export function stripBox(strip) {
@@ -23,7 +24,7 @@ export function stripBox(strip) {
 // Bounding box of what a comp looks like, for guides and focusing.
 export function compBox(c) {
   if (c.type === 'battery') return { ...BATTERY };
-  if (c.type === 'pot') { const b = potBody(c); const [a, , p2] = pinPos(c); return { x: b.x, y: b.y, w: b.w, h: a.y - b.y + 12 }; }
+  if (hasBody(c)) { const b = potBody(c); const [a] = pinPos(c); return { x: b.x, y: b.y, w: b.w, h: a.y - b.y + 12 }; }
   const ps = pinPos(c);
   const x0 = Math.min(...ps.map(p => p.x)), x1 = Math.max(...ps.map(p => p.x));
   const y0 = Math.min(...ps.map(p => p.y)), y1 = Math.max(...ps.map(p => p.y));
@@ -38,8 +39,8 @@ export function hitComp(circuit, x, y, max = 10) {
       if ((c.type === 'wire') !== pass) continue;
       let d = Infinity;
       if (c.type === 'battery') d = x >= BATTERY.x && x <= BATTERY.x + BATTERY.w && y >= BATTERY.y && y <= BATTERY.y + BATTERY.h ? 0 : Infinity;
-      else if (c.type === 'pot') { const b = potBody(c); d = x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h ? 0 : Infinity; }
-      else if (c.type === 'button') { const [a, b] = pinPos(c); d = Math.min(Math.hypot(x - (a.x + b.x) / 2, y - (a.y + b.y) / 2) - 8, distToSegment(x, y, a, b)); }
+      else if (hasBody(c)) { const b = potBody(c); d = x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h ? 0 : Infinity; }
+      else if (c.type === 'button' || c.type === 'switch') { const [a, b] = pinPos(c); d = Math.min(Math.hypot(x - (a.x + b.x) / 2, y - (a.y + b.y) / 2) - 8, distToSegment(x, y, a, b)); }
       else { const [a, b] = pinPos(c); d = distToSegment(x, y, a, b); }
       if (d <= max && d < bd) { bd = d; best = c.id; }
     }
@@ -241,7 +242,7 @@ export function createBoardView(host, cb = {}) {
   };
   const halo = (c, cls) => {
     if (c.type === 'battery') return el('rect', { x: BATTERY.x - 5, y: BATTERY.y - 5, width: BATTERY.w + 10, height: BATTERY.h + 10, rx: 12, class: cls });
-    if (c.type === 'pot') { const b = potBody(c); const [a] = pinPos(c); return el('rect', { x: b.x - 5, y: b.y - 5, width: b.w + 10, height: a.y - b.y + 16, rx: 10, class: cls }); }
+    if (hasBody(c)) { const b = potBody(c); const [a] = pinPos(c); return el('rect', { x: b.x - 5, y: b.y - 5, width: b.w + 10, height: a.y - b.y + 16, rx: 10, class: cls }); }
     const [a, b] = pinPos(c);
     return el('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: cls + ' line' });
   };
@@ -302,6 +303,53 @@ export function createBoardView(host, cb = {}) {
       grp.append(el('line', { x1: kx, y1: ky, x2: kx, y2: ky - 10, class: 'knobptr', transform: `rotate(${ang} ${kx} ${ky})` }));
       for (const p of [pa, pw, pb]) grp.append(plug(p));
     }
+    else if (c.type === 'transistor') {
+      const body = potBody(c), s = st.sim || {};
+      ps.forEach((p, k) => {
+        grp.append(el('line', { x1: p.x, y1: p.y, x2: p.x, y2: body.y + body.h, class: 'leg' }));
+        grp.append(el('text', { x: p.x, y: body.y + body.h - 4, text: 'CBE'[k], class: 'gpin', 'text-anchor': 'middle' }));
+      });
+      const cx = body.x + body.w / 2, w = body.w - 12, top = body.y, bot = body.y + body.h - 12;
+      grp.append(el('path', { d: `M${cx - w / 2} ${bot}V${top + 8}A${w / 2} 10 0 0 1 ${cx + w / 2} ${top + 8}V${bot}Z`, class: 'qbody' + (s.state && s.state !== 'off' ? ' on' : '') }));
+      grp.append(el('text', { x: cx, y: top + 16, text: 'NPN', class: 'gatetext', 'text-anchor': 'middle' }));
+      for (const p of ps) grp.append(plug(p));
+    }
+    else if (c.type === 'diode') {
+      const [a, b] = ps, d = Math.hypot(b.x - a.x, b.y - a.y), ang = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+      const L = Math.min(26, d - 8), r = el('g', { transform: `translate(${(a.x + b.x) / 2} ${(a.y + b.y) / 2}) rotate(${ang})` });
+      r.append(el('line', { x1: -d / 2, y1: 0, x2: d / 2, y2: 0, class: 'leg' }));
+      r.append(el('rect', { x: -L / 2, y: -5.5, width: L, height: 11, rx: 3, class: 'diodebody' }));
+      r.append(el('rect', { x: L / 2 - 6, y: -5.5, width: 4, height: 11, class: 'diodestripe' }));
+      grp.append(r, plug(a), plug(b));
+    } else if (c.type === 'capacitor') {
+      const body = potBody(c), [pa, pb] = ps, s = st.sim || {};
+      for (const p of ps) grp.append(el('line', { x1: p.x, y1: p.y, x2: p.x, y2: body.y + body.h, class: 'leg' }));
+      grp.append(el('rect', { x: body.x, y: body.y, width: body.w, height: body.h, rx: 7, class: 'capbody' }));
+      grp.append(el('rect', { x: pb.x - 10, y: body.y + 2, width: 20, height: body.h - 4, rx: 4, class: 'capstripe' }));
+      const frac = Math.max(0, Math.min(1, (s.v || 0) / 9));
+      grp.append(el('rect', { x: body.x + 4, y: body.y + body.h - 7, width: Math.max(0, (body.w - 8) * frac), height: 4, rx: 2, class: 'capfill' }));
+      grp.append(el('text', { x: pa.x, y: body.y + 13, text: '+', class: 'cappol', 'text-anchor': 'middle' }));
+      grp.append(el('text', { x: pb.x, y: body.y + 13, text: '−', class: 'cappol', 'text-anchor': 'middle' }));
+      grp.append(el('text', { x: body.x + body.w / 2, y: body.y + 24, text: `${+(c.props.c * 1e6).toFixed(1)}µF`, class: 'captext', 'text-anchor': 'middle' }));
+      for (const p of ps) grp.append(plug(p));
+    } else if (c.type === 'switch') {
+      const [a, b] = ps, m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, on = !!c.props.on;
+      grp.append(el('line', { x1: a.x, y1: a.y, x2: m.x, y2: m.y, class: 'leg' }), el('line', { x1: b.x, y1: b.y, x2: m.x, y2: m.y, class: 'leg' }));
+      grp.append(el('rect', { x: m.x - 17, y: m.y - 10, width: 34, height: 20, rx: 10, class: 'swbody' + (on ? ' on' : '') }));
+      grp.append(el('circle', { cx: m.x + (on ? 7 : -7), cy: m.y, r: 7.5, class: 'swknob' + (on ? ' on' : '') }));
+      grp.append(plug(a), plug(b));
+    } else if (c.type === 'gate') {
+      const body = potBody(c), s = st.sim || {}, ins = s.inputs || [];
+      const names = c.pins.length === 3 ? ['A', 'B', 'Y'] : ['A', 'Y'];
+      ps.forEach((p, k) => {
+        const hi = k === ps.length - 1 ? !!s.out : !!ins[k];
+        grp.append(el('line', { x1: p.x, y1: p.y, x2: p.x, y2: body.y + body.h, class: 'leg gleg' + (hi ? ' hi' : '') }));
+        grp.append(el('text', { x: p.x, y: body.y + body.h - 4, text: names[k], class: 'gpin', 'text-anchor': 'middle' }));
+      });
+      grp.append(el('rect', { x: body.x, y: body.y, width: body.w, height: body.h - 12, rx: 6, class: 'gatebody' }));
+      grp.append(el('text', { x: body.x + body.w / 2, y: body.y + 15, text: String(c.props.fn).toUpperCase(), class: 'gatetext', 'text-anchor': 'middle' }));
+      for (const p of ps) grp.append(plug(p));
+    }
     return grp;
   }
 
@@ -329,8 +377,8 @@ export function createBoardView(host, cb = {}) {
     const items = [];
     for (const c of circuit.comps) {
       const s = sim?.comps[c.id];
-      if (!s || !['wire', 'resistor', 'led', 'button'].includes(c.type)) continue;
-      if (c.type === 'button' && !c.props.pressed) continue;
+      if (!s || !['wire', 'resistor', 'led', 'button', 'switch', 'diode', 'capacitor'].includes(c.type)) continue;
+      if ((c.type === 'button' && !c.props.pressed) || (c.type === 'switch' && !c.props.on)) continue;
       const [a, b] = pinPos(c);
       items.push({ key: c.id, d: `M${a.x} ${a.y}L${b.x} ${b.y}`, i: s.i });
     }

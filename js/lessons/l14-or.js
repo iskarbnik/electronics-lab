@@ -1,0 +1,47 @@
+import { T, info, wire, place, toggle, quiz, batterySetup } from './common.js';
+import { inputA, inputB, outChain, gateSchematic } from './logic.js';
+
+export default {
+  id: 'l14-or',
+  unit: 2,
+  truth: 'G1',
+  title: T('שער OR: לפחות אחד', 'The OR gate: at least one'),
+  summary: T('המוצא גבוה כשלפחות אחת הכניסות גבוהה.', 'The output is high when at least one input is high.'),
+  schematic: gateSchematic('or', true),
+  setup: [...batterySetup(), ...inputA(), ...inputB(), ...outChain(1)],
+  steps: [
+    info(T(
+      'שער OR ("או") נותן 1 כשלפחות אחת הכניסות 1. נחבר אותו בדיוק כמו את ה-AND, ורק סוג השער ישתנה.',
+      'The OR gate gives 1 when at least one input is 1. We wire it exactly like the AND gate, and only the gate type changes.')),
+    place('G1', 'gate', ['j13', 'j14', 'j15'], { fn: 'or' },
+      T('הציבו שער OR: כניסה A בעמודה 13, כניסה B בעמודה 14 והמוצא Y בעמודה 15.', 'Place an OR gate: input A in column 13, input B in column 14 and output Y in column 15.')),
+    wire('XA', ['e4', 'f13'], 'blue',
+      T('חברו את מתג A (עמודה 4) לכניסה A (עמודה 13).', 'Connect switch A (column 4) to input A (column 13).')),
+    wire('XB', ['e10', 'f14'], 'yellow',
+      T('חברו את מתג B (עמודה 10) לכניסה B (עמודה 14).', 'Connect switch B (column 10) to input B (column 14).')),
+    wire('XY', ['f15', 'e18'], 'green',
+      T('חברו את המוצא Y (עמודה 15) אל הנגד של הנורית בעמודה 18. שתי הכניסות 0, והנורית כבויה.', 'Connect the output Y (column 15) to the LED resistor in column 18. Both inputs are 0 and the LED is off.'),
+      { expect: sim => !sim.comps.D1.lit }),
+    toggle('SA', true,
+      T('סגרו את מתג A. אחת מספיקה, והנורית נדלקת.', 'Close switch A. One is enough, and the LED lights up.'),
+      { expect: sim => sim.comps.D1.lit }),
+    toggle('SB', true,
+      T('סגרו גם את B. כששתיהן 1 הנורית נשארת דולקת.', 'Close B too. With both at 1 the LED stays lit.'),
+      { expect: sim => sim.comps.D1.lit }),
+    toggle('SA', false,
+      T('פתחו את A. B לבדו מספיק כדי להדליק.', 'Open A. B alone is enough to light it.'),
+      { expect: sim => sim.comps.D1.lit }),
+    toggle('SB', false,
+      T('פתחו גם את B. עכשיו שתיהן 0, והנורית כבה.', 'Open B too. Now both are 0 and the LED goes out.'),
+      { expect: sim => !sim.comps.D1.lit }),
+    info(T(
+      'OR הוא כמו שני מתגים במקביל: מספיק שאחד סגור. שימו לב שכששתי הכניסות 1 המוצא גם 1.',
+      'OR is like two switches side by side: one closed is enough. Note that when both inputs are 1 the output is 1 as well.')),
+    quiz(T('אזעקה צריכה להישמע אם דלת או חלון נפתחים. איזה שער מתאים?', 'An alarm must sound if a door or a window opens. Which gate fits?'),
+      [T('OR', 'OR'), T('AND', 'AND'), T('NOT', 'NOT')], 0,
+      T('מספיק אחד משני התנאים, וזה OR.', 'One of the two conditions is enough, which is OR.')),
+    quiz(T('A=1 ו-B=1. מה המוצא של שער OR?', 'A=1 and B=1. What is the output of an OR gate?'),
+      [T('1', '1'), T('0', '0')], 0,
+      T('OR נותן 1 כשלפחות אחת הכניסות 1.', 'OR gives 1 when at least one input is 1.')),
+  ],
+};

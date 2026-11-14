@@ -67,13 +67,13 @@ async function playLesson(cfg, lesson) {
     if (!c) throw new Error('component not on board: ' + id);
     if (c.type === 'battery') return [BATTERY.x + BATTERY.w / 2, BATTERY.y + BATTERY.h / 2];
     const ps = c.pins.map(pt);
-    if (c.type === 'pot') return [ps[1][0], ps[1][1] - 30];
+    if (['pot', 'gate', 'capacitor', 'transistor'].includes(c.type)) return [(ps[0][0] + ps[ps.length - 1][0]) / 2, ps[0][1] - 30];
     return [(ps[0][0] + ps[ps.length - 1][0]) / 2, (ps[0][1] + ps[ps.length - 1][1]) / 2];
   };
   const state = () => page.evaluate(() => ({ step: __elab.player.debug.step, done: !!document.querySelector('.complete:not([hidden])') && getComputedStyle(document.querySelector('.complete')).display !== 'none', nextOn: !document.querySelector('.nx').disabled }));
   // Hebrew only: every number+unit in visible text must sit inside a bdi, code, svg or dir=ltr element.
   const unwrappedUnits = () => page.evaluate(() => {
-    const re = /(?<![\w.\/])-?\d+(?:[.,]\d+)?(?:\/\d+)?\s?(?:µA|mA|A|µV|mV|V|kΩ|MΩ|Ω|mW|W)(?![A-Za-z0-9µΩ])/;
+    const re = /(?<![\w.\/])-?\d+(?:[.,]\d+)?(?:\/\d+)?\s?(?:µA|mA|A|µV|mV|V|kΩ|MΩ|Ω|mW|W|µF|mF|F)(?![A-Za-z0-9µΩ])/;
     const bad = [], w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     for (let n; (n = w.nextNode());) {
       const el = n.parentElement;
@@ -104,7 +104,7 @@ async function playLesson(cfg, lesson) {
         await page.click(`.opt >> nth=${s.answer}`);
       } else if (s.type === 'explore') await tapHole(s.want === 'rail' ? 'p+12' : 'c12');
       else if (s.type === 'wire') { await tapHole(s.pins[0]); await tapHole(s.pins[1]); }
-      else if (s.type === 'place') { if (s.kind === 'pot') await tapHole(s.pins[0]); else { await tapHole(s.pins[0]); await tapHole(s.pins[1]); } }
+      else if (s.type === 'place') { if (['pot', 'gate', 'transistor'].includes(s.kind)) await tapHole(s.pins[0]); else { await tapHole(s.pins[0]); await tapHole(s.pins[1]); } }
       else if (s.type === 'measure') { await tapHole(s.red); await tapHole(s.black); }
       else if (s.type === 'do') {
         const q = await toScreen(await compPoint(s.comp));
@@ -126,13 +126,16 @@ async function playLesson(cfg, lesson) {
           else if (s.act === 'set') {
             const probe = { comps: [{ id: s.comp, props: {} }] }; s.auto(probe);
             await page.locator('.card .chip', { hasText: new RegExp(`^${fmt(probe.comps[0].props.r, 'Ω')}$`) }).click();
+          } else if (s.act === 'setfn') {
+            const probe = { comps: [{ id: s.comp, props: {} }] }; s.auto(probe);
+            await page.locator('.card .chip', { hasText: new RegExp(`^${probe.comps[0].props.fn.toUpperCase()}$`) }).click();
           } else if (s.act === 'turn') {
             await page.$eval('.card input[type=range]', (el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }, s.range.value);
           }
         }
       }
       // wait for auto-advance (wire/place) or the Next button
-      for (let i = 0; i < 30; i++) { st = await state(); if (st.step !== k || st.done || st.nextOn) break; await wait(100); }
+      for (let i = 0; i < (s.act === 'wait' ? 150 : 30); i++) { st = await state(); if (st.step !== k || st.done || st.nextOn) break; await wait(100); }
       if (st.step === k && !st.done) {
         if (!st.nextOn) throw new Error(`step ${k} (${s.type}${s.act ? ' ' + s.act : ''}) never completed`);
         if (k === n - 1) {
@@ -184,6 +187,9 @@ async function offlineCheck() {
 
 for (const cfg of CONFIGS) {
   console.log(cfg.name);
+  const { PARTS } = await import(pathToFileURL(join(ROOT, 'js/parts.js')));
+  const { pagesCheck } = await import('./pages.mjs');
+  await pagesCheck({ browser, cfg, BASE, PARTS, fail, shot });
   for (const lesson of LESSONS) await playLesson(cfg, lesson);
 }
 console.log('offline');

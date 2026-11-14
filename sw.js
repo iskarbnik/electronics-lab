@@ -1,6 +1,6 @@
 // Service worker: precache the app shell, then network first with cache fallback.
 // Bump VERSION whenever any app file changes so old caches are dropped.
-const VERSION = 'elab-v2';
+const VERSION = 'elab-v7';
 const FILES = [
   './',
   'index.html',
@@ -9,13 +9,17 @@ const FILES = [
   'js/app.js',
   'js/i18n.js',
   'js/store.js',
+  'js/parts.js',
   'js/ui/boardView.js',
   'js/ui/schematicView.js',
   'js/ui/lessonPlayer.js',
   'js/ui/svg.js',
+  'js/ui/pages.js',
   'js/sim/board.js',
   'js/sim/circuit.js',
   'js/sim/format.js',
+  'js/sim/calc.js',
+  'js/sim/logic.js',
   'js/sim/solver.js',
   'js/lessons/common.js',
   'js/lessons/engine.js',
@@ -30,6 +34,17 @@ const FILES = [
   'js/lessons/l08-series.js',
   'js/lessons/l09-parallel.js',
   'js/lessons/l10-pot.js',
+  'js/lessons/l11-signals.js',
+  'js/lessons/l12-not.js',
+  'js/lessons/l13-and.js',
+  'js/lessons/l14-or.js',
+  'js/lessons/l15-more-gates.js',
+  'js/lessons/l16-half-adder.js',
+  'js/lessons/l17-diode.js',
+  'js/lessons/l18-capacitor.js',
+  'js/lessons/l19-scope.js',
+  'js/lessons/l20-transistor.js',
+  'js/lessons/logic.js',
   'icons/icon.svg',
   'icons/icon-192.png',
   'icons/icon-512.png',

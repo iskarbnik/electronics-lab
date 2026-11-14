@@ -1,5 +1,5 @@
 // Helpers shared by all lesson files.
-import { getComp, removeComp } from '../sim/circuit.js';
+import { getComp, removeComp, advance } from '../sim/circuit.js';
 
 export const T = (he, en) => ({ he, en });
 export const SETUP = T('הכנה', 'Setup');
@@ -22,9 +22,15 @@ export const select = (comp, text, extra) =>
 export const press = (comp, text, extra) =>
   doStep(comp, 'press', text, () => {}, (sim, c, ui) => !!ui && ui.pressed.has(comp), extra);
 
+// Flips a part's legs. `extra.watch` names the LED that must light (or not) as a result, default the part itself.
 export const flip = (comp, wantLit, text, extra) => doStep(comp, 'flip', text,
   c => { const x = getComp(c, comp); if (x) x.pins = [x.pins[1], x.pins[0]]; },
-  sim => !!sim.comps[comp] && !!sim.comps[comp].lit === !!wantLit, extra);
+  sim => { const w = (extra && extra.watch) || comp; return !!sim.comps[w] && !!sim.comps[w].lit === !!wantLit; }, extra);
+
+// Lets time pass until `done(comp)` holds. `auto` jumps five seconds ahead.
+export const wait = (comp, done, text, extra) => doStep(comp, 'wait', text,
+  c => { advance(c, 5); },
+  (sim, c) => { const x = getComp(c, comp); return !!x && done(x); }, extra);
 
 export const remove = (comp, text, extra) =>
   doStep(comp, 'remove', text, c => removeComp(c, comp), (sim, c) => !getComp(c, comp), extra);
@@ -32,6 +38,14 @@ export const remove = (comp, text, extra) =>
 export const replace = (comp, text, extra) => doStep(comp, 'replace', text,
   c => { const x = getComp(c, comp); if (x) x.burned = false; },
   (sim, c) => { const x = getComp(c, comp); return !!x && !x.burned; }, extra);
+
+export const toggle = (comp, on, text, extra) => doStep(comp, 'toggle', text,
+  c => { const x = getComp(c, comp); if (x) x.props.on = on; },
+  (sim, c) => { const x = getComp(c, comp); return !!x && !!x.props.on === on; }, extra);
+
+export const setFn = (comp, fn, text, extra) => doStep(comp, 'setfn', text,
+  c => { const x = getComp(c, comp); if (x) x.props.fn = fn; },
+  (sim, c) => { const x = getComp(c, comp); return !!x && x.props.fn === fn; }, extra);
 
 export const setR = (comp, ohms, text, extra) => doStep(comp, 'set', text,
   c => { const x = getComp(c, comp); if (x) x.props.r = ohms; },

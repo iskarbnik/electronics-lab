@@ -1,0 +1,76 @@
+import { T, info, place, wire, toggle, wait, quiz, batterySetup } from './common.js';
+
+const w = (pts, of, extra) => ({ pts, of, dir: 1, ...extra });
+const M = { meter: { red: 'b8', black: 'p-5' } };
+
+export default {
+  id: 'l18-capacitor',
+  unit: 3,
+  title: T('הקבל: מטען וזמן', 'The capacitor: charge and time'),
+  summary: T('קבל נטען ומתרוקן לאט, כמו דלי קטן של חשמל.', 'A capacitor charges and discharges gradually, like a small bucket of electricity.'),
+  schematic: {
+    parts: [
+      { id: 'BAT', type: 'battery', x: 2, y: 6, rot: 90 },
+      { id: 'SA', type: 'switch', x: 6, y: 2, rot: 0 },
+      { id: 'R1', type: 'resistor', x: 12, y: 2, rot: 0 },
+      { id: 'C1', type: 'capacitor', x: 16, y: 6, rot: 90 },
+      { id: 'R2', type: 'resistor', x: 20, y: 6, rot: 90 },
+      { id: 'D1', type: 'led', x: 20, y: 11, rot: 90 },
+    ],
+    wires: [
+      w([[2, 4], [2, 2], [4, 2]], 'BAT'),
+      w([[8, 2], [10, 2]], 'R1'),
+      w([[14, 2], [20, 2], [20, 4]], 'R2'),
+      w([[16, 2], [16, 4]], 'C1'),
+      w([[20, 8], [20, 9]], 'D1'),
+      w([[16, 8], [16, 14], [2, 14], [2, 8]], 'C1'),
+      w([[20, 13], [20, 14]], 'D1'),
+    ],
+    dots: [[16, 2], [16, 14]],
+  },
+  setup: [...batterySetup()],
+  steps: [
+    info(T(
+      'קבל הוא רכיב שאוגר מטען חשמלי, כמו דלי קטן. הוא נמדד בפראדים, ופה נשתמש בקבל של 1000 µF. כשמחברים אותו למתח הוא נטען לאט, ולא מיד.',
+      'A capacitor stores electric charge, like a small bucket. It is measured in farads, and here we use a 1000 µF one. Connect it to a voltage and it charges gradually, not instantly.')),
+    wire('WF', ['p+2', 'a2'], 'red',
+      T('חברו חוט אדום מפס ה-+ אל עמודה 2.', 'Connect a red wire from the + rail to column 2.')),
+    place('SA', 'switch', ['b2', 'b4'], {},
+      T('הציבו מתג בין עמודה 2 לעמודה 4.', 'Place a switch between column 2 and column 4.')),
+    place('R1', 'resistor', ['a4', 'a8'], { r: 470 },
+      T('הציבו נגד של 470 Ω בין עמודה 4 לעמודה 8.', 'Place a 470 Ω resistor between column 4 and column 8.')),
+    place('C1', 'capacitor', ['e8', 'e9'], { c: 0.001, vc: 0 },
+      T('הציבו קבל של 1000 µF. הרגל עם ה-+ בעמודה 8 והרגל עם הפס (-) בעמודה 9. קבל כזה קוטבי, ואסור להפוך אותו.', 'Place a 1000 µF capacitor. The + leg goes in column 8 and the striped (-) leg in column 9. This kind is polarized, so never put it in backwards.')),
+    wire('WG', ['a9', 'p-9'], 'black',
+      T('חברו את עמודה 9 לפס ה-- בחוט שחור. הקבל ריק, ולכן המתח עליו 0 V.', 'Connect column 9 to the - rail with a black wire. The capacitor is empty, so the voltage across it is 0 V.')),
+    toggle('SA', true,
+      T('סגרו את המתג. הרב-מודד כבר מחובר לקבל: צפו במתח.', 'Close the switch. The multimeter is already on the capacitor: watch the voltage.'), M),
+    wait('C1', c => c.props.vc > 8.5,
+      T('המתינו. המתח עולה מהר בהתחלה ואז מתמתן, עד שמגיע כמעט ל-9 V.', 'Wait. The voltage climbs fast at first and then levels off, until it nearly reaches 9 V.'), M),
+    info(T(
+      'הקבל נטען דרך הנגד. הזמן האופייני הוא ההתנגדות כפול הקיבול: 470 Ω כפול 1000 µF נותן בערך 0.47 שניות. אחרי זמן כזה הקבל מגיע ל-63 אחוז מהמתח.',
+      'The capacitor charges through the resistor. The characteristic time is resistance times capacitance: 470 Ω times 1000 µF is about 0.47 seconds. After that long the capacitor reaches 63 percent of the voltage.')),
+    toggle('SA', false,
+      T('פתחו את המתג. הקבל שומר על המטען, והמתח נשאר כמעט 9 V.', 'Open the switch. The capacitor keeps its charge, and the voltage stays near 9 V.'),
+      { ...M, expect: sim => sim.comps.C1.v > 8.5 }),
+    place('R2', 'resistor', ['b8', 'b12'], { r: 470 },
+      T('עכשיו נשתמש בקבל כסוללה קטנה. הציבו נגד של 470 Ω בין עמודה 8 לעמודה 12.', 'Now we use the capacitor as a tiny battery. Place a 470 Ω resistor between column 8 and column 12.'), M),
+    place('D1', 'led', ['c12', 'c13'], { color: 'green' },
+      T('הציבו נורית ירוקה בעמודות 12 ו-13.', 'Place a green LED in columns 12 and 13.'), M),
+    wire('WL', ['a13', 'p-13'], 'black',
+      T('חברו את עמודה 13 לפס ה-- בחוט שחור. הנורית נדלקת מהמטען שבקבל, בלי סוללה!', 'Connect column 13 to the - rail with a black wire. The LED lights from the charge in the capacitor, with no battery!'),
+      { ...M, expect: sim => sim.comps.D1.lit }),
+    wait('C1', c => c.props.vc < 2.3,
+      T('המתינו וצפו בנורית נחלשת וכבה, כשהקבל מתרוקן.', 'Wait and watch the LED fade and go out as the capacitor empties.'),
+      { ...M, expect: sim => !sim.comps.D1.lit }),
+    info(T(
+      'קבלים משמשים לייצוב מתח, לתזמון ולהבזקים, כמו הפלאש במצלמה. כל עוד הם מתרוקנים דרך עומס, המתח שלהם יורד בהדרגה.',
+      'Capacitors are used to smooth voltage, for timing and for flashes, like a camera flash. As long as they discharge through a load, their voltage falls gradually.')),
+    quiz(T('מה קורה למתח על קבל טעון אחרי שהמתג נפתח ושום דבר לא מתרוקן אותו?', 'What happens to the voltage on a charged capacitor after the switch opens, with nothing draining it?'),
+      [T('הוא נשאר', 'It stays'), T('הוא יורד מיד ל-0', 'It drops to 0 at once'), T('הוא מכפיל את עצמו', 'It doubles')], 0,
+      T('המטען נשאר באגירה. בפועל קבל מתרוקן לאט בגלל דליפה.', 'The charge stays stored. In practice a capacitor slowly leaks.')),
+    quiz(T('מחליפים בקבל גדול יותר, והנגד נשאר. איך ישתנה זמן הטעינה?', 'We swap in a bigger capacitor and keep the resistor. How does the charging time change?'),
+      [T('הוא יתארך', 'It gets longer'), T('הוא יתקצר', 'It gets shorter'), T('לא ישתנה', 'It stays the same')], 0,
+      T('הזמן האופייני הוא R כפול C, ולכן קבל גדול יותר אומר טעינה איטית יותר.', 'The time constant is R times C, so a bigger capacitor charges more slowly.')),
+  ],
+};

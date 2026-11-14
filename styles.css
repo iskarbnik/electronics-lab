@@ -262,3 +262,76 @@ html[dir="rtl"] .iconbtn.sm { margin: -6px 0 -6px -8px; }
   .cvals span { font-size: .62rem; }
   .cvals .num { font-size: .9rem; }
 }
+
+/* ---------- logic gates ---------- */
+.truthbox { flex: none; z-index: 3; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 6px 12px; background: #0c1117; border-bottom: 1px solid var(--line); direction: inherit; }
+.tnames { font-family: var(--mono); letter-spacing: .1em; margin-inline-start: 4px; color: #c7d0dc; }
+.tchips { display: flex; gap: 6px; flex-wrap: wrap; }
+.tchip { font: 700 .9rem/1 var(--mono); padding: 6px 9px; border-radius: 8px; background: #141b24; color: var(--muted); border: 1px solid var(--line); direction: ltr; }
+.tchip i { font-style: normal; margin: 0 4px; opacity: .6; }
+.tchip.on { background: rgba(255, 178, 36, .16); border-color: var(--amber); color: #fff; }
+.tchip.on.hi b { color: #6ee7a8; }
+.gatebody { fill: #1d2430; stroke: #4b5563; stroke-width: 1.5; }
+.gatetext { fill: #e9eef4; font: 800 11px var(--mono); }
+.gpin { fill: #aab4c0; font: 700 8px var(--mono); }
+.gleg { stroke-width: 2.4; }
+.gleg.hi { stroke: #6ee7a8; }
+.swbody { fill: #2b323c; stroke: #4b5563; stroke-width: 1.5; }
+.swbody.on { fill: #2f5f46; stroke: #6ee7a8; }
+.swknob { fill: #dfe3e8; stroke: #8a929d; stroke-width: 1.5; }
+.swknob.on { fill: #6ee7a8; }
+.gatesym { fill: rgba(199, 208, 220, .06); stroke: #c7d0dc; stroke-width: 2.4; stroke-linejoin: round; }
+.gatesym.hi { fill: rgba(110, 231, 168, .25); stroke: #6ee7a8; }
+.swire.hi { stroke: #6ee7a8; }
+.swire.lo { stroke: #7d8793; }
+
+/* ---------- diode and capacitor ---------- */
+.diodebody { fill: #1c1f24; stroke: #4b5563; stroke-width: 1; }
+.diodestripe { fill: #c9ced6; }
+.capbody { fill: #1f3b5c; stroke: #3d6aa6; stroke-width: 1.5; }
+.capstripe { fill: #aab6c6; opacity: .35; }
+.capfill { fill: var(--amber); }
+.cappol { fill: #fff; font: 800 12px var(--sans); }
+.captext { fill: #dbe7f7; font: 700 9px var(--mono); }
+
+/* ---------- oscilloscope ---------- */
+.scopebox { flex: none; z-index: 3; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 12px; background: #0c1117; border-bottom: 1px solid var(--line); direction: inherit; }
+.scopebox svg { flex: 1 1 100%; height: 84px; max-height: 14vh; background: #070b10; border: 1px solid var(--line); border-radius: 8px; direction: ltr; }
+.sgrid { stroke: #24303f; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.sgl { fill: #6b7a8c; font: 9px var(--mono); }
+.slegend { display: flex; gap: 8px; align-items: center; font-size: .8rem; color: #c7d0dc; }
+.slegend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-inline-end: 4px; }
+
+/* ---------- transistor ---------- */
+.qbody { fill: #1c1f24; stroke: #4b5563; stroke-width: 1.5; }
+.qbody.on { stroke: #6ee7a8; }
+.qarrow { fill: #c7d0dc; stroke: #c7d0dc; stroke-width: 1.5; stroke-linejoin: round; }
+
+/* ---------- calculators and parts pages ---------- */
+.quick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px; }
+.qlink { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; text-decoration: none; min-width: 0; }
+.qlink:hover { border-color: var(--amber-d); }
+.qlink b { color: var(--amber); }
+.qlink span { font-size: .85rem; color: var(--muted); }
+.page .hhead { justify-content: flex-start; }
+.page .back { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; color: inherit; }
+.page .back svg { width: 24px; height: 24px; }
+html[dir="rtl"] .page .back svg { transform: scaleX(-1); }
+.ptitle { font-size: 1.3rem; margin: 0; }
+.tool, .pcard { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; margin-top: 14px; }
+.tool h2, .pcard h2 { margin: 0 0 4px; font-size: 1.05rem; }
+.muted { color: var(--muted); font-size: .9rem; margin: 0 0 10px; }
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.field { display: flex; flex-direction: column; gap: 4px; font-size: .85rem; color: var(--muted); min-width: 0; }
+.field input, .field select { min-height: 44px; width: 100%; padding: 0 10px; border-radius: 10px; border: 1px solid var(--line); background: #0f151c; color: var(--text); font: 600 1rem var(--mono); }
+.tres { display: grid; gap: 6px; margin-top: 12px; }
+.tres div { display: flex; justify-content: space-between; gap: 10px; padding: 8px 12px; border-radius: 10px; background: #101720; }
+.tres div span { color: var(--muted); font-size: .9rem; }
+.tres b { font-family: var(--mono); color: var(--amber); white-space: nowrap; }
+.bandsvg { width: 100%; max-width: 280px; height: auto; margin: 0 auto; display: block; }
+.pcard { display: flex; gap: 14px; align-items: flex-start; }
+.psym { width: 84px; height: 76px; flex: none; background: #0f151c; border-radius: 10px; }
+.ptext2 { min-width: 0; }
+.ptext2 p { margin: 0 0 6px; }
+.ptip { color: var(--muted); font-size: .92rem; }
+.plink { color: var(--amber); font-size: .9rem; }

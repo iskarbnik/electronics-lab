@@ -132,3 +132,157 @@ test('formatting', () => {
   assert.equal(bands(470).length, 3);
   assert.deepEqual(bands(470), bands(47).slice(0, 2).concat(bands(100)[2]));
 });
+
+// ---------- logic gates ----------
+import { truthTable, gateEval } from '../js/sim/logic.js';
+
+function gateBoard(fn, two = true) {
+  const c = newCircuit();
+  addComp(c, { id: 'WP', type: 'wire', pins: ['BAT+', 'p+1'] });
+  addComp(c, { id: 'WN', type: 'wire', pins: ['BAT-', 'p-1'] });
+  for (const [n, a, b, sw, rp] of [['A', 'p+2', 'c4', 'c2', 'p-4'], ['B', 'p+8', 'c10', 'c8', 'p-10']]) {
+    if (!two && n === 'B') continue;
+    addComp(c, { id: 'W' + n, type: 'wire', pins: [a, 'a' + (n === 'A' ? 2 : 8)] });
+    addComp(c, { id: 'S' + n, type: 'switch', pins: [sw, b] });
+    addComp(c, { id: 'R' + n, type: 'resistor', pins: [rp, 'a' + (n === 'A' ? 4 : 10)], props: { r: 10000 } });
+  }
+  addComp(c, { id: 'G1', type: 'gate', pins: two ? ['j13', 'j14', 'j15'] : ['j13', 'j14'], props: { fn } });
+  addComp(c, { id: 'XA', type: 'wire', pins: ['e4', 'f13'] });
+  if (two) addComp(c, { id: 'XB', type: 'wire', pins: ['e10', 'f14'] });
+  addComp(c, { id: 'XY', type: 'wire', pins: [two ? 'f15' : 'f14', 'e18'] });
+  addComp(c, { id: 'R1', type: 'resistor', pins: ['a18', 'a21'], props: { r: 470 } });
+  addComp(c, { id: 'D1', type: 'led', pins: ['b21', 'b22'], props: { color: 'green' } });
+  addComp(c, { id: 'W3', type: 'wire', pins: ['a22', 'p-22'] });
+  return c;
+}
+const setSw = (c, id, on) => { getComp(c, id).props.on = on; };
+
+test('every gate matches its truth table through the whole circuit', () => {
+  for (const fn of ['and', 'or', 'nand', 'nor', 'xor']) {
+    for (const [[a, b], out] of truthTable(fn)) {
+      const c = gateBoard(fn);
+      setSw(c, 'SA', a); setSw(c, 'SB', b);
+      const s = simulate(c);
+      assert.equal(s.comps.G1.out, out, `${fn}(${+a},${+b})`);
+      assert.equal(s.comps.D1.lit, out, `${fn}(${+a},${+b}) LED`);
+      assert.deepEqual(s.comps.G1.inputs, [a, b]);
+    }
+  }
+});
+
+test('NOT gate inverts, and the battery supplies the LED current', () => {
+  const c = gateBoard('not', false);
+  let s = simulate(c);
+  assert.equal(s.comps.G1.out, true);
+  assert.ok(s.comps.D1.lit);
+  near(s.comps.D1.i, 0.0135, 0.001);
+  assert.ok(s.comps.BAT.i > s.comps.D1.i, 'battery supplies the LED and the pull-down');
+  near(s.comps.G1.v, 8.65, 0.1);
+  setSw(c, 'SA', true);
+  s = simulate(c);
+  assert.equal(s.comps.G1.out, false);
+  assert.ok(!s.comps.D1.lit);
+  near(s.comps.G1.v, 0, 0.01);
+});
+
+test('pull-down gives a low level, and a gate output drives an LED without a resistor into a burn', () => {
+  const c = gateBoard('and');
+  const s = simulate(c);
+  near(voltageBetween(s, 'b4', 'p-12'), 0, 0.01);
+  setSw(c, 'SA', true);
+  near(voltageBetween(simulate(c), 'b4', 'p-12'), 9, 0.05);
+  const d = gateBoard('not', false);
+  getComp(d, 'R1').props.r = 0.01;
+  const r = simulate(d);
+  assert.ok(getComp(d, 'D1').burned);
+  assert.equal(r.events[0].type, 'burn');
+});
+
+test('gate truth tables and evaluation', () => {
+  assert.equal(truthTable('and').length, 4);
+  assert.equal(truthTable('not').length, 2);
+  assert.equal(gateEval('xor', [true, false]), true);
+  assert.equal(gateEval('nor', [false, false]), true);
+});
+
+// ---------- diode and capacitor ----------
+import { advance } from '../js/sim/circuit.js';
+
+test('diode conducts forward with about 0.7 V and blocks in reverse', () => {
+  const c = newCircuit();
+  addComp(c, { id: 'WP', type: 'wire', pins: ['BAT+', 'p+1'] });
+  addComp(c, { id: 'WN', type: 'wire', pins: ['BAT-', 'p-1'] });
+  addComp(c, { id: 'W1', type: 'wire', pins: ['p+3', 'a3'] });
+  addComp(c, { id: 'D2', type: 'diode', pins: ['c3', 'c5'] });
+  addComp(c, { id: 'R1', type: 'resistor', pins: ['b5', 'b9'], props: { r: 470 } });
+  addComp(c, { id: 'W2', type: 'wire', pins: ['b9', 'p-9'] });
+  let s = simulate(c);
+  near(s.comps.D2.v, 0.84, 0.05);
+  near(s.comps.R1.i, (9 - 0.7) / 470, 0.001);
+  getComp(c, 'D2').pins.reverse();
+  s = simulate(c);
+  assert.ok(Math.abs(s.comps.R1.i) < 1e-6);
+  near(s.comps.D2.v, -9, 0.01);
+});
+
+test('RC charging follows 1 - e^(-t/RC), holds its charge and discharges', () => {
+  const c = newCircuit();
+  addComp(c, { id: 'WP', type: 'wire', pins: ['BAT+', 'p+1'] });
+  addComp(c, { id: 'WN', type: 'wire', pins: ['BAT-', 'p-1'] });
+  addComp(c, { id: 'W1', type: 'wire', pins: ['p+2', 'a2'] });
+  addComp(c, { id: 'S', type: 'switch', pins: ['b2', 'b4'], props: { on: true } });
+  addComp(c, { id: 'R1', type: 'resistor', pins: ['a4', 'a8'], props: { r: 470 } });
+  addComp(c, { id: 'C1', type: 'capacitor', pins: ['e8', 'e9'], props: { c: 0.001 } });
+  addComp(c, { id: 'W3', type: 'wire', pins: ['a9', 'p-9'] });
+  let s = simulate(c);
+  near(s.comps.C1.v, 0, 0.01);
+  s = advance(c, 0.47);
+  near(s.comps.C1.v, 9 * (1 - Math.exp(-1)), 0.15);
+  advance(c, 5);
+  near(getComp(c, 'C1').props.vc, 9, 0.01);
+  getComp(c, 'S').props.on = false;
+  advance(c, 2);
+  near(getComp(c, 'C1').props.vc, 9, 0.01);
+  addComp(c, { id: 'R2', type: 'resistor', pins: ['b8', 'b12'], props: { r: 470 } });
+  addComp(c, { id: 'W4', type: 'wire', pins: ['b12', 'p-12'] });
+  advance(c, 0.47);
+  near(getComp(c, 'C1').props.vc, 9 * Math.exp(-1), 0.15);
+});
+
+test('an auto switch is a square wave that follows simulated time', () => {
+  const c = newCircuit();
+  addComp(c, { id: 'S', type: 'switch', pins: ['b2', 'b4'], props: { period: 2 } });
+  simulate(c, 0.5); assert.equal(getComp(c, 'S').props.on, true);
+  simulate(c, 0.6); assert.equal(getComp(c, 'S').props.on, false);
+  advance(c, 1); assert.equal(getComp(c, 'S').props.on, true);
+});
+
+// ---------- transistor ----------
+function qBoard(rb) {
+  const c = newCircuit();
+  addComp(c, { id: 'WP', type: 'wire', pins: ['BAT+', 'p+1'] });
+  addComp(c, { id: 'WN', type: 'wire', pins: ['BAT-', 'p-1'] });
+  addComp(c, { id: 'W1', type: 'wire', pins: ['p+5', 'a5'] });
+  addComp(c, { id: 'D1', type: 'led', pins: ['b5', 'b6'] });
+  addComp(c, { id: 'R1', type: 'resistor', pins: ['a6', 'a10'], props: { r: 470 } });
+  addComp(c, { id: 'Q1', type: 'transistor', pins: ['e10', 'e11', 'e12'] });
+  addComp(c, { id: 'WE', type: 'wire', pins: ['a12', 'p-12'] });
+  if (rb) addComp(c, { id: 'RB', type: 'resistor', pins: ['b11', 'p+11'], props: { r: rb } });
+  return c;
+}
+
+test('transistor is off with no base current, saturated with plenty, and amplifies in between', () => {
+  let s = simulate(qBoard(0));
+  assert.equal(s.comps.Q1.state, 'off');
+  assert.ok(!s.comps.D1.lit);
+  s = simulate(qBoard(10000));
+  assert.equal(s.comps.Q1.state, 'sat');
+  near(s.comps.Q1.ib, 0.00083, 0.00003);
+  near(s.comps.D1.i, 0.0142, 0.0005);
+  near(s.comps.Q1.v, 0.2, 0.05);
+  s = simulate(qBoard(1000000));
+  assert.equal(s.comps.Q1.state, 'active');
+  near(s.comps.Q1.i, 100 * s.comps.Q1.ib, 1e-9);
+  near(s.comps.D1.i, 0.00083, 0.00003);
+  near(s.comps.BAT.i, s.comps.D1.i + s.comps.Q1.ib, 1e-6);
+});
