@@ -4,10 +4,11 @@ Bilingual (Hebrew RTL + English) installable PWA that teaches electronics on a l
 
 ## Architecture
 - `js/sim/`: simulator. `board.js` geometry and strips, `circuit.js` components and `simulate()`, `solver.js`, `format.js` (`fmt`, resistor `bands`).
-- `js/lessons/`: `index.js` exports `LESSONS`; `l01..l15-*.js` one file per lesson (a lesson may set `battery: 5` for logic); `common.js` step constructors; `engine.js` `applyStep` / `buildCircuit`.
+- `js/lessons/`: `index.js` exports `LESSONS`; `l01..l16-*.js` one file per lesson (a lesson may set `battery: 5` for logic); `common.js` step constructors; `engine.js` `applyStep` / `buildCircuit`.
 - `js/ui/`: `lessonPlayer.js` (the lesson screen, exposes `window.__elab.player.debug`), `boardView.js`, `schematicView.js`, `svg.js`.
-- `js/arduino/`: Phase 4. `parser.js` (lexer, parser for the Arduino C++ subset), `interp.js` (`Sketch`, generator based so `delay()` pauses; Uno integer sizes: int is 16 bit), `kit.js` (`newLabCircuit()`/`newKit()`: the Uno plugs into row j, columns 6 to 25, and the kit is wired to it with jumpers; `KitBoard` host for the sketch, `Runner` steps it in time), `examples.js`. Uno part: comp type `uno` in `circuit.js` (pin outputs are 25 Ω sources, INPUT_PULLUP is 20 kΩ to 5 V, over 40 mA flags `over`). `ui/arduinoLab.js` is the `#/arduino` screen (`window.__elab.lab`). analogWrite is blended between its high and low circuit states by duty.
+- `js/arduino/`: Phase 4. `parser.js` (lexer, parser for the Arduino C++ subset), `interp.js` (`Sketch`, generator based so `delay()` pauses; Uno integer sizes: int is 16 bit), `kit.js` (`newLabCircuit()`/`newKit()`: the Uno plugs into row j, columns 6 to 25, and the kit is wired to it with jumpers; `KitBoard` host for the sketch, `Runner` steps it in time), `examples.js`. Uno part: comp type `uno` in `circuit.js` (pin outputs are 25 Ω sources, INPUT_PULLUP is 20 kΩ to 5 V, over 40 mA flags `over`). `ui/arduinoLab.js` is the `#/arduino` screen (`window.__elab.lab`). Boards: `BOARDS` in `kit.js` (`uno`: 5 V, 10 bit ADC; `esp32`: 3.3 V, 12 bit ADC, `ledcAttach`/`ledcWrite`, GPIO numbers; pins plug into row j from column 6). `lessons.js` exports `ARDUINO_LESSONS` and `ESP32_LESSONS`. PWM: exact duty-weighted blend, or real 490 Hz stepping when a capacitor or the scope needs time; pin changes inside a frame are replayed across sub-steps.
 - `js/calc.js` pure calculator maths, `js/parts.js` encyclopedia data, `js/ui/tools.js` (`#/tools`), `js/ui/parts.js` (`#/parts`), `js/ui/scope.js` (oscilloscope used by the Arduino lab).
+- Phase 5: `js/ui/sandbox.js` (`#/sandbox`, and `#/sandbox/<id>` for `js/challenges.js` challenges: start circuit + `check(circuit)`), `js/ui/quiz.js` + `js/quizbank.js` (bank = every lesson quiz step), `js/badges.js` + `js/ui/badges.js` (computed from progress and `store` flags), `js/tutor.js` + `js/ui/tutorPanel.js` (offline rule-based tutor: circuit diagnosis and a glossary; NOT a language model).
 - `js/app.js` router and home screen, `js/i18n.js` strings (`t`, `L`, `ltr`, `bidi`), `js/store.js` progress in localStorage, `sw.js` service worker.
 - Lesson: `{ id, title, summary, schematic, setup:[step], steps:[step] }`. All text is `{ he, en }` and may hold simple HTML. Step types: info, explore, wire, place, measure, do (select/flip/remove/replace/set/press/turn/toggle/wait, with `auto` and `until`), quiz. Three-hole parts (pot, transistor, 3-input gate, SPDT switch) are placed by tapping the first hole. Any step may have `expect(sim, circuit)`, checked by tests.
 
@@ -30,8 +31,8 @@ Bilingual (Hebrew RTL + English) installable PWA that teaches electronics on a l
 
 ## Phase plan
 1. Foundation: simulator, lesson engine, 10 lessons, PWA, i18n (done).
-2. Capacitors, diodes, transistors, time-domain circuits, oscilloscope, calculators, parts encyclopedia (done; the scope lives in the Arduino lab only).
-3. Logic gates (done: AND, OR, NOT, NAND, NOR, XOR, lessons 14 and 15; no flip-flops or multi-gate circuits yet).
+2. Capacitors, diodes, transistors, time-domain circuits, oscilloscope, calculators, parts encyclopedia (done; the scope is in the Arduino lab, the sandbox and the capacitor lesson).
+3. Logic gates (done: AND, OR, NOT, NAND, NOR, XOR, SR latch, lessons 14 to 16; gates remember their output in `props.out`).
 4. Arduino Uno with an in-app interpreter for a subset of Arduino code (done: lab, wiring editor, serial input, PWM, 7 guided lessons in `js/arduino/lessons.js`).
-5. Sandbox, challenges, quizzes, badges, AI tutor.
-6. ESP32.
+5. Sandbox, challenges, quizzes, badges, tutor (done; the tutor is rule-based and offline, a real LLM would need an API key and a server).
+6. ESP32 (done: GPIO, 3.3 V, 12 bit ADC, LEDC, 2 lessons; WiFi and Bluetooth are not simulated).

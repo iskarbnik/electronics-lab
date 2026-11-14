@@ -9,6 +9,7 @@ export default {
   id: 'l12-capacitor',
   title: T('הקבל: סוללה קטנה שנטענת', 'The capacitor: a tiny rechargeable battery'),
   summary: T('טוענים קבל דרך נגד ורואים אותו מרוקן את עצמו דרך נורית. זמן שווה R כפול C.', 'Charge a capacitor through a resistor and watch it empty through an LED. Time is R times C.'),
+  scope: { red: 'a9', black: 'a10', vmax: 10, tdiv: 0.5, label: 'C1' },
   schematic: {
     parts: [
       { id: 'BAT', type: 'battery', x: 2, y: 6, rot: 90 },

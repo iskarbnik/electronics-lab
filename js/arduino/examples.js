@@ -223,3 +223,98 @@ void loop() {
 `),
   },
 ];
+
+// ESP32 examples (GPIO numbers; 3.3 V logic; analogRead is 12 bit; ledcAttach/ledcWrite for PWM on any pin).
+export const ESP_EXAMPLES = [
+  {
+    id: 'blink',
+    title: T('מהבהב', 'Blink'),
+    code: T(
+`// ב-ESP32 קוראים לפינים לפי מספר GPIO. הנורית האדומה על GPIO 18
+void setup() {
+  pinMode(18, OUTPUT);
+}
+
+void loop() {
+  digitalWrite(18, HIGH);    // 3.3 V
+  delay(500);
+  digitalWrite(18, LOW);     // 0 V
+  delay(500);
+}
+`,
+`// On an ESP32 pins are named by GPIO number. The red LED is on GPIO 18
+void setup() {
+  pinMode(18, OUTPUT);
+}
+
+void loop() {
+  digitalWrite(18, HIGH);    // 3.3 V
+  delay(500);
+  digitalWrite(18, LOW);     // 0 V
+  delay(500);
+}
+`),
+  },
+  {
+    id: 'button',
+    title: T('לחצן ונורית', 'Button and LED'),
+    code: T(
+`// הלחצן על GPIO 4 מחובר לאדמה. הנורית הצהובה על GPIO 19
+void setup() {
+  pinMode(4, INPUT_PULLUP);
+  pinMode(19, OUTPUT);
+}
+
+void loop() {
+  digitalWrite(19, !digitalRead(4));   // לחיצה קוראת LOW, ולכן הופכים
+}
+`,
+`// The button on GPIO 4 goes to ground. The yellow LED is on GPIO 19
+void setup() {
+  pinMode(4, INPUT_PULLUP);
+  pinMode(19, OUTPUT);
+}
+
+void loop() {
+  digitalWrite(19, !digitalRead(4));   // a press reads LOW, so invert it
+}
+`),
+  },
+  {
+    id: 'pot',
+    title: T('ADC של 12 ביט ו-PWM', '12 bit ADC and PWM'),
+    code: T(
+`// הפוטנציומטר על GPIO 34 (קריאה 0 עד 4095), הנורית הירוקה על GPIO 21
+void setup() {
+  Serial.begin(115200);
+  ledcAttach(21, 5000, 8);               // פין, תדר, ביטים
+}
+
+void loop() {
+  int raw = analogRead(34);              // 0 עד 4095
+  ledcWrite(21, map(raw, 0, 4095, 0, 255));
+  Serial.print("ADC = ");
+  Serial.print(raw);
+  Serial.print("  volts = ");
+  Serial.println(raw * 3.3 / 4095.0);
+  delay(200);
+}
+`,
+`// The potentiometer is on GPIO 34 (reads 0 to 4095), the green LED on GPIO 21
+void setup() {
+  Serial.begin(115200);
+  ledcAttach(21, 5000, 8);               // pin, frequency, bits
+}
+
+void loop() {
+  int raw = analogRead(34);              // 0 to 4095
+  ledcWrite(21, map(raw, 0, 4095, 0, 255));
+  Serial.print("ADC = ");
+  Serial.print(raw);
+  Serial.print("  volts = ");
+  Serial.println(raw * 3.3 / 4095.0);
+  delay(200);
+}
+`),
+  },
+];

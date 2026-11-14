@@ -129,7 +129,7 @@ test('kit: runtime errors stop the sketch with a code', () => {
   assert.equal(r.error.name, 'nope');
 });
 
-import { ARDUINO_LESSONS } from '../js/arduino/lessons.js';
+import { ARDUINO_LESSONS, ESP32_LESSONS } from '../js/arduino/lessons.js';
 import { newLabCircuit, unoHole } from '../js/arduino/kit.js';
 import { addComp } from '../js/sim/circuit.js';
 
@@ -193,9 +193,9 @@ test('guided Arduino lessons are well formed and can be completed', () => {
   const isT = x => x && x.he?.trim() && x.en?.trim();
   assert.ok(ARDUINO_LESSONS.length >= 6);
   assert.equal(new Set(ARDUINO_LESSONS.map(l => l.id)).size, ARDUINO_LESSONS.length);
-  for (const lesson of ARDUINO_LESSONS) {
+  for (const lesson of [...ARDUINO_LESSONS, ...ESP32_LESSONS]) {
     assert.ok(isT(lesson.title) && isT(lesson.summary), lesson.id);
-    const board = new KitBoard(lesson.circuit === 'empty' ? newLabCircuit(false) : newKit());
+    const board = new KitBoard(lesson.circuit === 'empty' ? newLabCircuit(false, lesson.board) : newKit(lesson.board));
     let code = '';
     const ctxFor = runner => ({ board, runner, code, out: board.out, running: !!runner && !runner.error && !runner.finished, stats: board.stats });
     lesson.steps.forEach((s, i) => {
@@ -235,4 +235,32 @@ test('a fast sketch keeps real time across frames and the scope sees every edge'
   assert.ok(edges >= 28 && edges <= 34, `edges ${edges}`);               // 160 ms / 5 ms = 32
   const high = b.scope.a.filter(v => v > 1).length / b.scope.a.length;
   assert.ok(high > 0.4 && high < 0.56, `duty ${high}`);
+});
+
+
+test('ESP32: 3.3 V logic, 12 bit ADC, ledc PWM, GPIO numbers and pull-down', () => {
+  const run32 = (src, ms = 200, before) => {
+    const board = new KitBoard(newKit('esp32'));
+    before?.(board);
+    const r = new Runner(src, board);
+    for (let t = 0; t <= ms; t += 20) { r.step(t); if (board.dirty) board.refresh(); }
+    assert.equal(r.error, null);
+    return board;
+  };
+  const hi = run32('void setup(){ pinMode(18, OUTPUT); digitalWrite(18, HIGH); }  void loop(){ delay(100); }');
+  near2(hi.sim.comps.UNO.pins.G18.v, 3.3, 0.5);          // pin voltage under load is below the 3.3 V rail
+  assert.ok(hi.sim.comps.L1.lit);
+  assert.ok(hi.sim.comps.UNO.pins.G18.i * -1 > 0.005 || Math.abs(hi.sim.comps.UNO.pins.G18.i) > 0.005);
+  const adc = run32('void setup(){ Serial.begin(115200); Serial.println(analogRead(34)); Serial.println(LED_BUILTIN); } void loop(){ delay(100); }');
+  assert.match(adc.out, /^20(4[6-9]|5\d)\n2\n/);          // mid pot: about 2047 of 4095, LED_BUILTIN is 2
+  const top = run32('void setup(){ Serial.println(analogRead(34)); } void loop(){ delay(100); }', 100, b => { getComp(b.circuit, 'P1').props.pos = 0; b.dirty = true; });
+  assert.ok(+top.out >= 4090, top.out);
+  const dim = run32('void setup(){ ledcAttach(21, 5000, 8); ledcWrite(21, 64); } void loop(){ delay(100); }');
+  const full = run32('void setup(){ ledcAttach(21, 5000, 8); ledcWrite(21, 255); } void loop(){ delay(100); }');
+  near2(dim.sim.comps.L3.brightness / full.sim.comps.L3.brightness, 64 / 255, 0.08);
+  const pd = run32('void setup(){ pinMode(5, INPUT_PULLDOWN); Serial.println(digitalRead(5)); pinMode(4, INPUT_PULLUP); Serial.println(digitalRead(4)); } void loop(){ delay(100); }');
+  assert.equal(pd.out, '0\n1\n');
+  const bad = new KitBoard(newKit('esp32')); const r = new Runner('void setup(){ ledcWrite(21, 1); } void loop(){}', bad);
+  r.step(0); assert.equal(r.error, null);
+  function near2(a, b, tol) { assert.ok(Math.abs(a - b) <= tol, `${a} vs ${b}`); }
 });

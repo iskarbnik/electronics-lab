@@ -239,3 +239,20 @@ test('calculators', () => {
   assert.deepEqual(bandCodes(10000).names, ['brown', 'black', 'orange']);
   assert.deepEqual(bandCodes(4.7).names, ['yellow', 'violet', 'gold']);
 });
+
+test('two NOR gates make an SR latch that remembers', () => {
+  const c = loopCircuit([
+    ['S1', 'switch', ['e2', 'e3', 'e4'], {}], ['S2', 'switch', ['e26', 'e27', 'e28'], {}],
+    ['W1', 'wire', ['p-2', 'a2'], {}], ['W2', 'wire', ['p+4', 'a4'], {}], ['W3', 'wire', ['p-26', 'a26'], {}], ['W4', 'wire', ['p+28', 'a28'], {}],
+    ['W5', 'wire', ['a3', 'b8'], {}], ['W6', 'wire', ['a27', 'b14'], {}],
+    ['G1', 'gate', ['e8', 'e9', 'e10'], { fn: 'nor' }], ['G2', 'gate', ['e14', 'e15', 'e16'], { fn: 'nor' }],
+    ['W7', 'wire', ['a10', 'a15'], {}], ['W8', 'wire', ['b16', 'b9'], {}],
+  ], 5);
+  const q = () => { const s = simulate(c); return [s.comps.G1.high ? 1 : 0, s.comps.G2.high ? 1 : 0]; };
+  const set = (S, R) => { getComp(c, 'S2').props.on = !!S; getComp(c, 'S1').props.on = !!R; return q(); };
+  assert.deepEqual(set(1, 0), [1, 0]);      // set: Q = 1
+  assert.deepEqual(set(0, 0), [1, 0]);      // hold
+  assert.deepEqual(set(0, 1), [0, 1]);      // reset: Q = 0
+  assert.deepEqual(set(0, 0), [0, 1]);      // hold
+  assert.deepEqual(set(1, 0), [1, 0]);
+});

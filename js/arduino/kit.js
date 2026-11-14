@@ -6,41 +6,54 @@ import { newCircuit, addComp, getComp, simulate } from '../sim/circuit.js';
 import { Sketch } from './interp.js';
 
 export const UNO_PINS = ['5V', 'GND', 'D13', 'D12', 'D11', 'D10', 'D9', 'D8', 'D7', 'D6', 'D5', 'D4', 'D3', 'D2', 'A0', 'A1', 'A2', 'A3', 'A4', 'A5'];
+export const ESP_PINS = ['3V3', 'GND', 'G2', 'G4', 'G5', 'G12', 'G13', 'G14', 'G15', 'G16', 'G17', 'G18', 'G19', 'G21', 'G22', 'G23', 'G25', 'G26', 'G27', 'G32', 'G33', 'G34', 'G35'];
 export const UNO_COL0 = 6;
-export const unoHole = name => 'j' + (UNO_COL0 + UNO_PINS.indexOf(name));
 export const PWM_PINS = new Set([3, 5, 6, 9, 10, 11]);
 export const PWM_PERIOD = 1 / 490;       // seconds, as on an Uno (pins 5 and 6 are 980 Hz on the real board)
 
-// An Uno alone on the board, or the Uno with the starter kit already wired (3 LEDs, a button, a pot).
-export function newLabCircuit(withKit = true) {
+// Board profiles. pinName maps a sketch pin number to a pin name on the board (or null).
+export const BOARDS = {
+  uno: {
+    id: 'uno', names: UNO_PINS, supply: '5V', vcc: 5, adcBits: 10, defaultPwm: 1 / 490,
+    pinName: n => (Number.isInteger(n) && n >= 0 && n <= 13 ? 'D' + n : Number.isInteger(n) && n >= 14 && n <= 19 ? 'A' + (n - 14) : null),
+    hasPwm: n => PWM_PINS.has(n), consts: { LED_BUILTIN: 13 },
+  },
+  esp32: {
+    id: 'esp32', names: ESP_PINS, supply: '3V3', vcc: 3.3, adcBits: 12, defaultPwm: 1 / 5000,
+    pinName: n => (Number.isInteger(n) && ESP_PINS.includes('G' + n) ? 'G' + n : null),
+    hasPwm: () => true, consts: { LED_BUILTIN: 2 },
+  },
+};
+export const unoHole = (name, board = 'uno') => 'j' + (UNO_COL0 + BOARDS[board].names.indexOf(name));
+
+// A board alone on the breadboard, or with the starter kit already wired (3 LEDs, a button, a pot).
+// Kit pins: Uno D13, D8, D9 (PWM), D2, A0 / ESP32 GPIO 18, 19, 21, 4, 34.
+export function newLabCircuit(withKit = true, board = 'uno') {
+  const prof = BOARDS[board];
   const c = newCircuit();
-  c.comps = c.comps.filter(x => x.id !== 'BAT');          // the Uno is powered over USB
+  c.comps = c.comps.filter(x => x.id !== 'BAT');          // the board is powered over USB
   const add = (id, type, pins, props) => addComp(c, { id, type, pins, props });
-  add('UNO', 'uno', UNO_PINS.map(unoHole), { names: [...UNO_PINS], io: {} });
+  add('UNO', 'uno', prof.names.map(n => unoHole(n, board)), { names: [...prof.names], io: {}, board, supply: prof.supply, vcc: prof.vcc });
   if (!withKit) return c;
-  const jump = (name, to, color) => add('J' + name, 'wire', [unoHole(name).replace('j', 'i'), to], { color });
-  jump('5V', 'p+6', 'red'); jump('GND', 'p-7', 'black');
-  // D13: red LED L1 through R1
-  jump('D13', 'a8', 'green');
-  add('R1', 'resistor', ['c8', 'c10'], { r: 220 }); add('L1', 'led', ['d10', 'd11'], { color: 'red' }); add('W1', 'wire', ['a11', 'p-11'], { color: 'black' });
-  // D8: yellow LED L2 through R2
-  jump('D8', 'a13', 'blue');
-  add('R2', 'resistor', ['c13', 'c15'], { r: 220 }); add('L2', 'led', ['d15', 'd16'], { color: 'yellow' }); add('W2', 'wire', ['a16', 'p-16'], { color: 'black' });
-  // D9 (PWM): green LED L3 through R3
-  jump('D9', 'a17', 'yellow');
-  add('R3', 'resistor', ['c17', 'c19'], { r: 220 }); add('L3', 'led', ['d19', 'd20'], { color: 'green' }); add('W3', 'wire', ['a20', 'p-20'], { color: 'black' });
-  // D2: push button to ground (use INPUT_PULLUP)
-  jump('D2', 'a22', 'orange');
+  const pins = board === 'esp32' ? { led1: 'G18', led2: 'G19', led3: 'G21', btn: 'G4', pot: 'G34' } : { led1: 'D13', led2: 'D8', led3: 'D9', btn: 'D2', pot: 'A0' };
+  const rr = board === 'esp32' ? 100 : 220;
+  const jump = (name, to, color) => add('J' + name, 'wire', [unoHole(name, board).replace('j', 'i'), to], { color });
+  jump(prof.supply, 'p+6', 'red'); jump('GND', 'p-7', 'black');
+  jump(pins.led1, 'a8', 'green');
+  add('R1', 'resistor', ['c8', 'c10'], { r: rr }); add('L1', 'led', ['d10', 'd11'], { color: 'red' }); add('W1', 'wire', ['a11', 'p-11'], { color: 'black' });
+  jump(pins.led2, 'a13', 'blue');
+  add('R2', 'resistor', ['c13', 'c15'], { r: rr }); add('L2', 'led', ['d15', 'd16'], { color: 'yellow' }); add('W2', 'wire', ['a16', 'p-16'], { color: 'black' });
+  jump(pins.led3, 'a17', 'yellow');
+  add('R3', 'resistor', ['c17', 'c19'], { r: rr }); add('L3', 'led', ['d19', 'd20'], { color: 'green' }); add('W3', 'wire', ['a20', 'p-20'], { color: 'black' });
+  jump(pins.btn, 'a22', 'orange');
   add('S1', 'button', ['c22', 'd24'], {}); add('W4', 'wire', ['a24', 'p-24'], { color: 'black' });
-  // A0: potentiometer between 5 V and ground
-  jump('A0', 'a27', 'purple');
+  jump(pins.pot, 'a27', 'purple');
   add('P1', 'pot', ['e26', 'e27', 'e28'], { r: 10000, pos: 0.5 });
   add('W5', 'wire', ['a26', 'p+26'], { color: 'red' }); add('W6', 'wire', ['a28', 'p-28'], { color: 'black' });
   return c;
 }
-export const newKit = () => newLabCircuit(true);
-
-export const pinName = n => (Number.isInteger(n) && n >= 0 && n <= 13 ? 'D' + n : Number.isInteger(n) && n >= 14 && n <= 19 ? 'A' + (n - 14) : null);
+export const newKit = (board = 'uno') => newLabCircuit(true, board);
+export const pinName = n => BOARDS.uno.pinName(n);
 
 const MIX = ['v', 'i', 'p', 'brightness', 'charge'];
 const emptyAcc = s => {
@@ -67,6 +80,10 @@ export class KitBoard {
   constructor(circuit = newKit()) {
     this.circuit = circuit;
     this.uno = getComp(circuit, 'UNO');
+    this.prof = BOARDS[this.uno.props.board || 'uno'];
+    this.vcc = this.uno.props.vcc ?? 5;
+    this.adcBits = this.prof.adcBits;
+    this.ledcBits = {};
     this.dirty = true;
     this.sim = null;
     this.clock = 0;          // sketch clock in ms
@@ -113,7 +130,7 @@ export class KitBoard {
     let acc = null;
     for (let mask = 0; mask < 1 << pwm.length; mask++) {
       let w = 1;
-      pwm.forEach((n, k) => { const hi = (mask >> k) & 1; io[n].level = hi ? 5 : 0; w *= hi ? io[n].duty : 1 - io[n].duty; });
+      pwm.forEach((n, k) => { const hi = (mask >> k) & 1; io[n].level = hi ? this.vcc : 0; w *= hi ? io[n].duty : 1 - io[n].duty; });
       if (w < 1e-9) continue;
       const s = simulate(this.circuit);
       acc ||= emptyAcc(s);
@@ -148,7 +165,7 @@ export class KitBoard {
       const t = this.time + (k + 0.5) * sub;
       while (next < log.length && ((log[next].at - t0) / span) <= (k + 0.5) / N + 1e-9) { io[log[next].name] = { ...log[next].state }; next++; }
       const pwm = this.pwmPins(), saved = pwm.map(n => io[n].level);
-      pwm.forEach(n => { io[n].level = ((t / PWM_PERIOD) % 1) < io[n].duty ? 5 : 0; });
+      pwm.forEach(n => { io[n].level = ((t / this.prof.defaultPwm) % 1) < io[n].duty ? this.vcc : 0; });
       const s = simulate(this.circuit, { dt: sub, advance: true });
       pwm.forEach((n, j) => { io[n].level = saved[j]; });
       if (this.scope) this.record(t, s);
@@ -190,24 +207,33 @@ export class KitBoard {
 
   // ----- host interface for the interpreter -----
   host() {
-    const self = this;
+    const self = this, prof = this.prof, vcc = this.vcc, pn = prof.pinName;
+    const setPwm = (n, frac) => {
+      const name = pn(n); if (!name) return;
+      const p = self.io(name); p.mode = 1;
+      if (!prof.hasPwm(n)) { p.duty = null; p.level = frac >= 0.5 ? vcc : 0; }       // only ~ pins have PWM, the others just go high or low
+      else { p.duty = frac <= 0 || frac >= 1 ? null : frac; p.level = frac <= 0 ? 0 : vcc; }
+      self.dirty = true; self.note(name);
+    };
     return {
-      pinMode(n, mode) { const name = pinName(n); if (!name) return; const p = self.io(name); p.mode = mode; p.duty = null; p.level = 0; self.dirty = true; self.note(name); },
+      consts: prof.consts,
+      pinMode(n, mode) { const name = pn(n); if (!name) return; const p = self.io(name); p.mode = mode; p.duty = null; p.level = 0; self.dirty = true; self.note(name); },
       digitalWrite(n, v) {
-        const name = pinName(n); if (!name) return;
+        const name = pn(n); if (!name) return;
         const p = self.io(name); p.duty = null;
-        if (p.mode === 1) p.level = v ? 5 : 0; else p.mode = v ? 2 : 0;   // writing HIGH to an input turns its pull-up on
+        if (p.mode === 1) p.level = v ? vcc : 0; else p.mode = v ? 2 : 0;   // writing HIGH to an input turns its pull-up on
         self.dirty = true; self.note(name);
       },
-      analogWrite(n, v) {
-        const name = pinName(n); if (!name) return;
-        const p = self.io(name); p.mode = 1;
-        if (!PWM_PINS.has(n)) { p.duty = null; p.level = v >= 128 ? 5 : 0; }      // only ~ pins have PWM, the others just go high or low
-        else { p.duty = v <= 0 || v >= 255 ? null : v / 255; p.level = v <= 0 ? 0 : 5; }
-        self.dirty = true; self.note(name);
+      analogWrite(n, v) { setPwm(n, v / 255); },
+      ledcAttach(n, freq, bits) { self.ledcBits[n] = bits; const name = pn(n); if (name) { const p = self.io(name); p.mode = 1; p.level = 0; self.dirty = true; self.note(name); } return freq; },
+      ledcWrite(n, duty) { setPwm(n, duty / ((2 ** (self.ledcBits[n] ?? 8)) - 1)); },
+      setAdcBits(b) { self.adcBits = Math.max(9, Math.min(12, b | 0)); },
+      digitalRead(n) { const name = pn(n); return name && self.read(name).v > vcc / 2 ? 1 : 0; },
+      analogRead(n) {
+        const name = pn(n), max = 2 ** self.adcBits - 1;
+        const v = name ? Math.max(0, Math.min(max, Math.round(self.read(name).v / vcc * max))) : 0;
+        self.stats.analog.add(v); return v;
       },
-      digitalRead(n) { const name = pinName(n); return name && self.read(name).v > 2.5 ? 1 : 0; },
-      analogRead(n) { const name = pinName(n); const v = name ? Math.max(0, Math.min(1023, Math.round(self.read(name).v / 5 * 1023))) : 0; self.stats.analog.add(v); return v; },
       print(s) { self.out += s; },
       now() { return self.clock; },
       available() { return self.inbuf.length; },

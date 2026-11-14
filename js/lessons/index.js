@@ -13,5 +13,6 @@ import l12 from './l12-capacitor.js';
 import l13 from './l13-transistor.js';
 import l14 from './l14-logic-basics.js';
 import l15 from './l15-logic-more.js';
+import l16 from './l16-latch.js';
 
-export const LESSONS = [l01, l02, l03, l04, l05, l06, l07, l08, l09, l10, l11, l12, l13, l14, l15];
+export const LESSONS = [l01, l02, l03, l04, l05, l06, l07, l08, l09, l10, l11, l12, l13, l14, l15, l16];

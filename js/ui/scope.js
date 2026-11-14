@@ -14,7 +14,7 @@ export function createScope(host) {
   svg.append(g);
   host.append(svg);
   // data: { t: [], a: [], b: [] } (seconds, volts), now: newest time. Draws the last 10 divisions.
-  function draw(data, tdiv, frozenAt) {
+  function draw(data, tdiv, frozenAt, vmax = 5) {
     clear(g);
     const n = data.t.length;
     if (!n) return;
@@ -26,7 +26,7 @@ export function createScope(host) {
       while (lo < n && data.t[lo] < start) lo++;
       lo = Math.max(0, lo - 1);
       const step = Math.max(1, Math.floor((n - lo) / 800));
-      const y = v => (H - Math.max(0, Math.min(5.5, v)) / 5 * H).toFixed(1), x = tt => ((tt - start) / span * W).toFixed(1);
+      const y = v => (H - Math.max(0, Math.min(vmax * 1.1, v)) / vmax * H).toFixed(1), x = tt => ((tt - start) / span * W).toFixed(1);
       let prev = null;
       for (let k = lo; k < n; k += step) {
         if (data.t[k] > end) break;

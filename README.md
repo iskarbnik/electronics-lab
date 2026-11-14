@@ -8,8 +8,8 @@ A bilingual (Hebrew RTL and English), installable PWA that teaches electronics o
 2. More parts: capacitors, diodes, transistors, an oscilloscope (in the Arduino lab), calculators and a parts encyclopedia.
 3. Digital logic gates: AND, OR, NOT, NAND, NOR and XOR.
 4. Arduino Uno with code: an in-app interpreter for a subset of Arduino C++ drives LEDs, a button and a potentiometer on the breadboard (open the Arduino lab from the home screen).
-5. Sandbox, challenges and an AI tutor.
-6. ESP32.
+5. Sandbox, challenges, a quiz, badges and an offline tutor (rule based, not an AI model).
+6. ESP32: GPIO pins, 3.3 V logic, 12 bit ADC and LEDC PWM in the Arduino lab (WiFi and Bluetooth are not simulated).
 
 ## Run locally
 
@@ -46,7 +46,7 @@ Push the repository, then in the repository on GitHub open Settings, Pages, choo
 3. שערים לוגיים דיגיטליים.
 4. Arduino Uno עם קוד.
 5. ארגז חול, אתגרים ומורה פרטי מבוסס בינה מלאכותית.
-6. ESP32.
+6. ESP32: GPIO pins, 3.3 V logic, 12 bit ADC and LEDC PWM in the Arduino lab (WiFi and Bluetooth are not simulated).
 
 ## הרצה מקומית
 

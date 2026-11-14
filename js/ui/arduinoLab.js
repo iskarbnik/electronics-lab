@@ -6,8 +6,8 @@ import { parseHole, stripOf, nearestHole, COLS } from '../sim/board.js';
 import { fmt, fmtF } from '../sim/format.js';
 import { createBoardView, hitComp } from './boardView.js';
 import { createScope, TIME_DIVS } from './scope.js';
-import { KitBoard, Runner, newKit, newLabCircuit } from '../arduino/kit.js';
-import { EXAMPLES } from '../arduino/examples.js';
+import { KitBoard, Runner, newKit, newLabCircuit, BOARDS } from '../arduino/kit.js';
+import { EXAMPLES as UNO_EXAMPLES, ESP_EXAMPLES } from '../arduino/examples.js';
 
 const BACK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const CHECK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -16,7 +16,7 @@ const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch { /* storage blocked */ } },
 };
-const KEY_CODE = 'elab.sketch', KEY_CIRCUIT = 'elab.labcircuit', KEY_PROG = 'elab.arduino';
+const KEY_PROG = 'elab.arduino';
 const MAX_OUT = 4000;
 const TOOLS = ['select', 'wire', 'resistor', 'led', 'button', 'pot', 'capacitor', 'diode'];
 const PREFIX = { wire: 'W', resistor: 'R', led: 'L', button: 'S', pot: 'P', capacitor: 'C', diode: 'D' };
@@ -31,11 +31,16 @@ export const progress = {
   isDone(id) { return !!this.read().done[id]; },
   getStep(id) { return this.read().step[id] || 0; },
   setStep(id, n) { const p = this.read(); p.step[id] = n; store.set(KEY_PROG, JSON.stringify(p)); },
+  reset() { store.set(KEY_PROG, '{}'); },
   markDone(id) { const p = this.read(); p.done[id] = true; store.set(KEY_PROG, JSON.stringify(p)); },
 };
 
 export function mountArduinoLab(root, opts = {}) {
   const lesson = opts.lesson || null;
+  const boardId = lesson ? (lesson.board || 'uno') : (store.get('elab.labboard') === 'esp32' ? 'esp32' : 'uno');
+  const prof = BOARDS[boardId];
+  const EXAMPLES = boardId === 'esp32' ? ESP_EXAMPLES : UNO_EXAMPLES;
+  const KEY_CODE = boardId === 'esp32' ? 'elab.sketch.esp32' : 'elab.sketch', KEY_CIRCUIT = boardId === 'esp32' ? 'elab.labcircuit.esp32' : 'elab.labcircuit';
   const el = document.createElement('div');
   el.className = 'lab';
   el.innerHTML = `
@@ -56,6 +61,7 @@ export function mountArduinoLab(root, opts = {}) {
       </section>
       <section class="labcol">
         <div class="guide" hidden></div>
+        <div class="boardsel" role="group" hidden><button type="button" data-b="uno">Arduino Uno</button><button type="button" data-b="esp32">ESP32</button></div>
         <details class="labpins"><summary></summary><p class="pinhelp"></p><ul></ul></details>
         <label class="labpot"><span class="potlbl"></span> <input class="potin" type="range" min="0" max="1" step="0.01" value="0.5"></label>
         <div class="labtools">
@@ -89,12 +95,12 @@ export function mountArduinoLab(root, opts = {}) {
 
   // ---------- state ----------
   const loadCircuit = () => {
-    if (lesson) return lesson.circuit === 'empty' ? newLabCircuit(false) : newKit();
+    if (lesson) return lesson.circuit === 'empty' ? newLabCircuit(false, boardId) : newKit(boardId);
     try {
       const c = JSON.parse(store.get(KEY_CIRCUIT) || 'null');
-      if (c && Array.isArray(c.comps) && c.comps.some(x => x.type === 'uno' && x.props.names?.length === 20)) return c;
+      if (c && Array.isArray(c.comps) && c.comps.some(x => x.type === 'uno' && x.props.names?.length === prof.names.length)) return c;
     } catch { /* fall through */ }
-    return newKit();
+    return newKit(boardId);
   };
   let kit = new KitBoard(loadCircuit());
   let runner = null, timer = 0, t0 = 0, last = 0, needDraw = true, shownOut = '', lastStatus = null;
@@ -114,12 +120,17 @@ export function mountArduinoLab(root, opts = {}) {
   const sameAsExample = src => EXAMPLES.find(ex => ex.code.he === src || ex.code.en === src);
   const toolName = k => (k === 'select' ? t('ard.tool.select') : t('part.' + k));
   function texts() {
-    E.title.textContent = lesson ? L(lesson.title) : t('ard.title');
+    E.title.textContent = lesson ? L(lesson.title) : t(boardId === 'esp32' ? 'ard.title32' : 'ard.title');
     E.sub.textContent = lesson ? t('ard.guided') : t('ard.sub');
     E.pinsum.textContent = t('ard.pins');
     E.pinhelp.innerHTML = bidi(esc(t('ard.pinhelp')));
     const row = (pin, key) => `<li>${ltr(pin)} ${bidi(esc(t(key)))}</li>`;
-    E.pinlist.innerHTML = row('D13', 'ard.p.d13') + row('D8', 'ard.p.d8') + row('D9', 'ard.p.d9') + row('D2', 'ard.p.d2') + row('A0', 'ard.p.a0');
+    E.pinlist.innerHTML = boardId === 'esp32'
+      ? row('GPIO 18', 'ard.p.d13') + row('GPIO 19', 'ard.p.d8') + row('GPIO 21', 'ard.p.e21') + row('GPIO 4', 'ard.p.d2') + row('GPIO 34', 'ard.p.e34')
+      : row('D13', 'ard.p.d13') + row('D8', 'ard.p.d8') + row('D9', 'ard.p.d9') + row('D2', 'ard.p.d2') + row('A0', 'ard.p.a0');
+    E.pinhelp.innerHTML = bidi(esc(t(boardId === 'esp32' ? 'ard.pinhelp32' : 'ard.pinhelp')));
+    const bs = el.querySelector('.boardsel'); bs.hidden = !!lesson;
+    bs.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.b === boardId)));
     E.pot.textContent = t('ard.pot');
     E.exlbl.textContent = t('ard.examples');
     [...E.sel.options].slice(1).forEach((o, k) => { o.textContent = L(EXAMPLES[k].title); });
@@ -261,8 +272,8 @@ export function mountArduinoLab(root, opts = {}) {
     btn(t('card.remove'), () => { removeComp(kit.circuit, c.id); selection = null; changed(); }, 'danger');
     E.card.append(row);
   }
-  E.loadkit.addEventListener('click', () => { stop(); kit = new KitBoard(newKit()); afterNewBoard(); });
-  E.clearb.addEventListener('click', () => { stop(); kit = new KitBoard(newLabCircuit(false)); afterNewBoard(); });
+  E.loadkit.addEventListener('click', () => { stop(); kit = new KitBoard(newKit(boardId)); afterNewBoard(); });
+  E.clearb.addEventListener('click', () => { stop(); kit = new KitBoard(newLabCircuit(false, boardId)); afterNewBoard(); });
   function afterNewBoard() { if (scopeOpen()) wireScope(); selection = null; pending = null; kit.dirty = true; needDraw = true; saveCircuit(); renderCard(); setStatus(null); shownOut = ''; E.mon.textContent = ''; syncPot(); }
   const potComp = () => getComp(kit.circuit, 'P1');
   function syncPot() { const p = potComp(); E.potin.closest('label').hidden = !p || p.type !== 'pot'; if (p) E.potin.value = p.props.pos; }
@@ -321,6 +332,7 @@ export function mountArduinoLab(root, opts = {}) {
   E.clr.addEventListener('click', () => { kit.out = ''; shownOut = ''; E.mon.textContent = ''; });
   E.serform.addEventListener('submit', e => { e.preventDefault(); kit.send(E.serline.value + (E.nlbox.checked ? '\n' : '')); E.serline.value = ''; });
   el.querySelector('.back').addEventListener('click', () => opts.onHome?.());
+  el.querySelectorAll('.boardsel button').forEach(b => b.addEventListener('click', () => { if (b.dataset.b !== boardId) { store.set('elab.labboard', b.dataset.b); opts.remount?.(); } }));
 
   // ---------- guided lesson ----------
   let stepIdx = 0, done = false, quizState = { picked: -1, right: false, wrong: false }, complete = false;
@@ -374,9 +386,9 @@ export function mountArduinoLab(root, opts = {}) {
   // ---------- oscilloscope ----------
   const scope = createScope(q('.scopehost'));
   let scopeFrozen = null;
-  const scopeNames = ['', ...kit.uno.props.names.filter(n => n !== '5V' && n !== 'GND'), '5V'];
+  const scopeNames = ['', ...kit.uno.props.names.filter(n => n !== prof.supply && n !== 'GND'), prof.supply];
   for (const sel of [E.ch1, E.ch2]) for (const n of scopeNames) { const o = document.createElement('option'); o.value = n; o.textContent = n; sel.append(o); }
-  E.ch1.value = 'D13'; E.ch2.value = '';
+  E.ch1.value = boardId === 'esp32' ? 'G18' : 'D13'; E.ch2.value = '';
   for (const d of TIME_DIVS) { const o = document.createElement('option'); o.value = d; o.textContent = d >= 1 ? d + ' s' : d * 1000 + ' ms'; E.tdiv.append(o); }
   E.tdiv.value = 0.5;
   const scopeOpen = () => E.scopeBox.open;

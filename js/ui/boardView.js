@@ -290,10 +290,11 @@ export function createBoardView(host, cb = {}) {
     } else if (c.type === 'uno') {
       c.pins.forEach((_, k) => {
         const p = ps[k], name = c.props.names[k], pv = st.sim?.pins?.[name];
-        const hi = pv && pv.v > 2.5 && name !== '5V';
-        const col = name === '5V' ? '#e0473b' : name === 'GND' ? '#c9ced6' : '#4aa3ff';
+        const sup = c.props.supply ?? '5V';
+        const hi = pv && pv.v > (c.props.vcc ?? 5) / 2 && name !== sup;
+        const col = name === sup ? '#e0473b' : name === 'GND' ? '#c9ced6' : '#4aa3ff';
         grp.append(el('line', { x1: p.x, y1: p.y, x2: p.x, y2: p.y + 11, stroke: col, 'stroke-width': 2.4, 'stroke-linecap': 'round' }));
-        grp.append(el('rect', { x: p.x - 9.5, y: p.y + 11, width: 19, height: 13, rx: 3, class: 'unotag' + (hi ? ' hi' : '') + (name === '5V' ? ' v5' : name === 'GND' ? ' gnd' : '') }));
+        grp.append(el('rect', { x: p.x - 9.5, y: p.y + 11, width: 19, height: 13, rx: 3, class: 'unotag' + (hi ? ' hi' : '') + (name === sup ? ' v5' : name === 'GND' ? ' gnd' : '') }));
         grp.append(el('text', { x: p.x, y: p.y + 20.5, text: name, class: 'unotext', 'text-anchor': 'middle' }));
         grp.append(plug(p));
       });

@@ -12,7 +12,7 @@ const isF = x => x instanceof Fl;
 const err = (code, line, name = '') => Object.assign(new Error(code), { code, line, name });
 
 export const CONSTS = {
-  HIGH: 1, LOW: 0, INPUT: 0, OUTPUT: 1, INPUT_PULLUP: 2, LED_BUILTIN: 13, true: 1, false: 0,
+  HIGH: 1, LOW: 0, INPUT: 0, OUTPUT: 1, INPUT_PULLUP: 2, INPUT_PULLDOWN: 3, LED_BUILTIN: 13, true: 1, false: 0,
   A0: 14, A1: 15, A2: 16, A3: 17, A4: 18, A5: 19, PI: new Fl(Math.PI), DEC: 10, HEX: 16, BIN: 2, OCT: 8,
 };
 const STEPS_PER_TICK = 400;
@@ -58,6 +58,8 @@ export class Sketch {
 
   lookup(sc, name, line) {
     for (let i = sc.length - 1; i >= 0; i--) { const c = sc[i].get(name); if (c) return c; }
+    const hc = this.host.consts;
+    if (hc && name in hc) return { val: hc[name], konst: true };
     if (name in CONSTS) return { val: CONSTS[name], konst: true };
     throw err('undef', line, name);
   }
@@ -235,6 +237,10 @@ export class Sketch {
       case 'digitalRead': need(1); return h.digitalRead(A(0));
       case 'analogRead': need(1); return h.analogRead(A(0));
       case 'analogWrite': need(2); h.analogWrite(A(0), Math.max(0, Math.min(255, Math.trunc(A(1))))); return 0;
+      case 'analogReadResolution': need(1); if (h.setAdcBits) h.setAdcBits(A(0)); return 0;
+      case 'analogWriteResolution': return 0;
+      case 'ledcAttach': need(3); if (!h.ledcAttach) throw err('undefFn', n.line, n.name); h.ledcAttach(A(0), A(1), A(2)); return A(1);
+      case 'ledcWrite': need(2); if (!h.ledcWrite) throw err('undefFn', n.line, n.name); h.ledcWrite(A(0), A(1)); return 0;
       case 'delay': need(1); yield { delay: Math.max(0, A(0)) }; return 0;
       case 'delayMicroseconds': need(1); if (A(0) >= 1000) yield { delay: A(0) / 1000 }; return 0;
       case 'millis': return coerce(ULONG, Math.floor(h.now()));

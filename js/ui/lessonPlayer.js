@@ -7,6 +7,8 @@ import { t, L, ltr, bidi, getLang, onLang } from '../i18n.js';
 import * as store from '../store.js';
 import { createBoardView, hitComp, compBox, stripBox, focusRect } from './boardView.js';
 import { createSchematicView } from './schematicView.js';
+import { createScope } from './scope.js';
+import { createTutor } from './tutorPanel.js';
 
 const ICON = {
   back: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -14,6 +16,7 @@ const ICON = {
   fit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   chev: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   x: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>',
+  help: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9.5 9.5a2.6 2.6 0 1 1 3.6 2.4c-.8.4-1.1.9-1.1 1.6M12 16.6v.4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
   check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
 const CHIPS = [100, 220, 330, 470, 1000, 2200, 4700, 10000, 47000, 100000];
@@ -40,6 +43,7 @@ export function mountLesson(root, lesson, opts = {}) {
       <button class="iconbtn back" type="button">${ICON.back}</button>
       <div class="ltitle"><h1></h1><span class="lstep"></span></div>
       <button class="tbtn meterbtn" type="button" aria-pressed="false">${ICON.meter}<span></span></button>
+      <button class="tbtn tutorbtn" type="button">${ICON.help}<span></span></button>
       <button class="tbtn fitbtn" type="button">${ICON.fit}<span></span></button>
       <div class="pbar" role="progressbar"><i></i></div>
     </header>
@@ -55,6 +59,7 @@ export function mountLesson(root, lesson, opts = {}) {
         <button class="schemtoggle" type="button" aria-expanded="true"><span></span>${ICON.chev}</button>
         <div class="shost"></div>
       </section>
+      <section class="pane scopepane" hidden><div class="scopehost"></div><div class="scoperead" dir="ltr"></div></section>
     </main>
     <footer class="steppanel">
       <div class="stepbody"><div class="steptext"></div><div class="quiz"></div><div class="hint" role="status"></div></div>
@@ -71,6 +76,11 @@ export function mountLesson(root, lesson, opts = {}) {
   };
   if (!lesson.schematic) { E.schemPane.hidden = true; rootEl.classList.add('noschem'); }
   const board = createBoardView(E.bhost, { onTap, onPress });
+  const tutor = createTutor($('.boardpane'), () => ({ circuit, sim }));
+  $('.tutorbtn').addEventListener('click', () => tutor.toggle());
+  const scopePane = $('.scopepane'), scope = lesson.scope ? createScope($('.scopehost')) : null;
+  const scopeData = { t: [], a: [], b: null };
+  let scopeT = 0;
   const schem = lesson.schematic ? createSchematicView(E.shost, lesson.schematic, { onSelect: id => selectComp(id) }) : null;
 
   // ---------- state ----------
@@ -95,6 +105,7 @@ export function mountLesson(root, lesson, opts = {}) {
     if (passed.has(i) && (s.type === 'quiz' || s.type === 'explore')) { done = true; if (s.type === 'quiz') quizState = { picked: s.answer, right: true, wrong: false }; }
     store.setStep(lesson.id, i);
     sim = simulate(circuit);
+    scopeData.t.length = 0; scopeData.a.length = 0; scopeT = 0;
     evalDone();
     focusStep();
     renderAll();
@@ -140,7 +151,7 @@ export function mountLesson(root, lesson, opts = {}) {
 
   function recalc() {
     sim = simulate(circuit);
-    for (const ev of sim.events) toast(t('toast.burn', { i: ltr(fmt(ev.i, 'A')) }));
+    for (const ev of sim.events) { toast(t('toast.burn', { i: ltr(fmt(ev.i, 'A')) })); store.setFlag('burned', true); }
     evalDone();
     renderAll();
   }
@@ -282,6 +293,7 @@ export function mountLesson(root, lesson, opts = {}) {
     E.title.textContent = L(lesson.title);
     E.stepLbl.innerHTML = t('lesson.step', { n: ltr(stepIdx + 1), m: ltr(steps.length) });
     E.meterBtn.querySelector('span').textContent = t('lesson.meter');
+    $('.tutorbtn span').textContent = t('tutor.btn'); $('.tutorbtn').setAttribute('aria-label', t('tutor.title'));
     E.meterBtn.setAttribute('aria-pressed', String(meterOn));
     E.fitBtn.querySelector('span').textContent = t('lesson.fit');
     E.fitBtn.setAttribute('aria-label', t('lesson.fitAria'));
@@ -428,7 +440,7 @@ export function mountLesson(root, lesson, opts = {}) {
   }
 
   function renderAll() {
-    renderHeader(); renderPanel(); renderMeter(); renderBanner(); renderCard(); renderBoard(); renderSchem(); renderComplete();
+    renderHeader(); renderPanel(); renderMeter(); renderBanner(); renderCard(); renderBoard(); renderSchem(); renderComplete(); tutor.refresh();
   }
 
   // ---------- wiring ----------
@@ -448,6 +460,14 @@ export function mountLesson(root, lesson, opts = {}) {
   const tick = setInterval(() => {
     if (complete || document.hidden || !circuit.comps.some(c => c.type === 'capacitor')) return;
     sim = simulate(circuit, { dt: TICK_MS / 1000, advance: true });
+    if (scope) {
+      scopeT += TICK_MS / 1000;
+      scopeData.t.push(scopeT); scopeData.a.push(voltageBetween(sim, lesson.scope.red, lesson.scope.black));
+      while (scopeData.t.length > 1 && scopeT - scopeData.t[0] > 30) { scopeData.t.shift(); scopeData.a.shift(); }
+      scopePane.hidden = false;
+      scope.draw({ ...scopeData, b: [null] }, lesson.scope.tdiv || 0.5, null, lesson.scope.vmax || 10);
+      $('.scoperead').innerHTML = ltr(`${esc(lesson.scope.label || '')} ${fmt(cleanV(scopeData.a.at(-1)), 'V')}`);
+    }
     for (const ev of sim.events) toast(t('toast.burn', { i: ltr(fmt(ev.i, 'A')) }));
     evalDone();
     renderBoard(); renderSchem(); renderMeter(); renderCard();
@@ -459,7 +479,7 @@ export function mountLesson(root, lesson, opts = {}) {
   enter(startStep);
 
   return {
-    destroy() { clearInterval(tick); clearTimeout(advanceTimer); clearTimeout(toastTimer); off(); board.destroy(); schem?.destroy(); rootEl.remove(); },
+    destroy() { tutor.destroy(); clearInterval(tick); clearTimeout(advanceTimer); clearTimeout(toastTimer); off(); board.destroy(); schem?.destroy(); rootEl.remove(); },
     // for tests and automation
     debug: { get step() { return stepIdx; }, get circuit() { return circuit; }, get sim() { return sim; } },
   };

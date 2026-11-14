@@ -14,6 +14,7 @@ export const UNO_VCC = 5;
 export const UNO_PIN_MAX_A = 0.04;   // an Arduino pin is rated for 40 mA
 const UNO_OUT_R = 25;                // output pin drive resistance
 const UNO_PULLUP_R = 20000;
+const UNO_PULLDOWN_R = 45000;
 export const SHORT_A = 1;            // battery current that counts as a short circuit
 const LED_RS = 8;
 const DIODE_RS = 1;
@@ -38,9 +39,9 @@ const DEFAULTS = {
   diode: () => ({ vf: DIODE_VF }),
   switch: () => ({ on: false }),               // SPDT toggle: pins [low, common, high]
   transistor: () => ({ beta: 100, vf: 0.7 }),  // NPN, pins [collector, base, emitter]
-  gate: p => ({ fn: p?.fn || 'and' }),         // logic gate, pins [A, B, Y] (NOT: [A, Y]); supply is the battery voltage
+  gate: p => ({ fn: p?.fn || 'and', out: false }),   // out is remembered between solves, so latches hold their state         // logic gate, pins [A, B, Y] (NOT: [A, Y]); supply is the battery voltage
   capacitor: () => ({ c: 0.001, vc: 0 }),
-  uno: () => ({ names: [], io: {} }),       // pins[k] is the hole of Arduino pin names[k]; io[name] = { mode, level }   // farads and the volts stored right now (pin0 minus pin1)
+  uno: () => ({ names: [], io: {}, board: 'uno', supply: '5V', vcc: 5, maxA: UNO_PIN_MAX_A }),       // pins[k] is the hole of Arduino pin names[k]; io[name] = { mode, level }   // farads and the volts stored right now (pin0 minus pin1)
 };
 
 export function newCircuit(v = 9) {
@@ -84,15 +85,17 @@ function solveOnce(circuit, dt) {
     }
     else if (c.type === 'gate') {
       const f = GATE_FNS[c.props.fn] ? c.props.fn : 'and', k = c.pins.length;
-      els.push({ c, a: n[k - 1], b: ground, g: 1 / GATE_R, is: 0, gate: true, ins: n.slice(0, k - 1), fn: f, out: false, vcc: (circuit.comps.find(x => x.type === 'battery')?.props.v) ?? 5 });
+      els.push({ c, a: n[k - 1], b: ground, g: 1 / GATE_R, is: 0, gate: true, ins: n.slice(0, k - 1), fn: f, out: !!c.props.out, vcc: (circuit.comps.find(x => x.type === 'battery')?.props.v) ?? 5 });
     }
     else if (c.type === 'uno') {
+      const vcc = c.props.vcc ?? UNO_VCC, supply = c.props.supply ?? '5V';
       c.pins.forEach((_, k) => {
         const name = c.props.names[k], st = c.props.io[name] || { mode: 0, level: 0 };
-        if (name === '5V') add(n[k], ground, 1, UNO_VCC, { pin: name });
+        if (name === supply) add(n[k], ground, 1, vcc, { pin: name });
         else if (name === 'GND') add(n[k], ground, 100, 0, { pin: name });
         else if (st.mode === 1) add(n[k], ground, 1 / UNO_OUT_R, st.level / UNO_OUT_R, { pin: name });
-        else if (st.mode === 2) add(n[k], ground, 1 / UNO_PULLUP_R, UNO_VCC / UNO_PULLUP_R, { pin: name });
+        else if (st.mode === 2) add(n[k], ground, 1 / UNO_PULLUP_R, vcc / UNO_PULLUP_R, { pin: name });
+        else if (st.mode === 3) add(n[k], ground, 1 / UNO_PULLDOWN_R, 0, { pin: name });
       });
     }
     else if (c.type === 'capacitor') { const g = Math.max(c.props.c, 1e-12) / dt; add(n[0], n[1], g, g * (c.props.vc || 0)); }
@@ -117,7 +120,7 @@ function solveOnce(circuit, dt) {
     }
     A[ground].fill(0); A[ground][ground] = 1; b[ground] = 0;
     V = solveLinear(A, b);
-    let changed = false;
+    let changed = false, gateFlipped = false;
     for (const e of els) {
       if (!e.led) continue;
       const dv = V[e.a] - V[e.b];
@@ -137,12 +140,14 @@ function solveOnce(circuit, dt) {
       } else if (e.gate) {
         const levels = e.ins.map(k => V[k] > e.vcc * 0.5), out = !!GATE_FNS[e.fn](levels);
         e.levels = levels;
-        if (out !== e.out) { e.out = out; changed = true; }
+        if (out !== e.out && !gateFlipped) { e.out = out; changed = true; gateFlipped = true; }   // one gate per round: latches settle
+        else if (out !== e.out) changed = true;
       }
     }
     if (!changed) break;
   }
 
+  for (const e of els) if (e.gate) e.c.props.out = e.out;
   const comps = {};
   for (const c of circuit.comps) comps[c.id] = { v: 0, i: 0, p: 0 };
   for (const e of els) {
@@ -178,7 +183,7 @@ function solveOnce(circuit, dt) {
       c.pins.forEach((h, k) => {
         const name = c.props.names[k], v = V[nodes.get(stripOf(h))];
         r.pins[name] = { ...(r.pins[name] || { i: 0 }), v };
-        r.pins[name].over = Math.abs(r.pins[name].i) > UNO_PIN_MAX_A && name !== '5V' && name !== 'GND';
+        r.pins[name].over = Math.abs(r.pins[name].i) > (c.props.maxA ?? UNO_PIN_MAX_A) && name !== (c.props.supply ?? '5V') && name !== 'GND';
       });
     }
     if (c.type === 'switch') r.on = !!c.props.on;

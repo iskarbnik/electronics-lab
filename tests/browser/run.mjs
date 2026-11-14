@@ -326,11 +326,85 @@ async function pagesCheck(cfg) {
   finally { await ctx.close(); }
 }
 
+// Sandbox, challenges, tutor, quiz, badges and the ESP32 board.
+async function phase5Check(cfg) {
+  const label = `${cfg.name}/sandbox-quiz-badges-esp32`;
+  const ctx = await browser.newContext(cfg.ctx);
+  const page = await ctx.newPage();
+  const problems = [];
+  page.on('console', m => { if (['error', 'warning'].includes(m.type())) problems.push(`console ${m.type()}: ${m.text()}`); });
+  page.on('pageerror', e => problems.push(`pageerror: ${e.message}`));
+  const wait = ms => page.waitForTimeout(ms);
+  const tr = k => STRINGS[k][cfg.lang === 'he' ? 1 : 0];
+  const hscroll = () => page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
+  const unwrapped = () => page.evaluate(() => {
+    const re = /(?<![\w.\/])-?\d+(?:[.,]\d+)?(?:\/\d+)?\s?(?:µA|mA|A|µV|mV|V|kΩ|MΩ|Ω|mW|W|µF|mF|F|s)(?![A-Za-z0-9µΩ])/, out = [];
+    const w = document.createTreeWalker(document.querySelector('.lab'), NodeFilter.SHOW_TEXT);
+    for (let n; (n = w.nextNode());) { const e = n.parentElement; if (!e || e.closest('bdi,code,svg,textarea,pre,select,input,[dir=ltr],.tutor [dir=ltr]')) continue; const m = re.exec(n.nodeValue); if (m) out.push(m[0]); }
+    return out;
+  });
+  const toScreen = ([x, y]) => page.evaluate(([x, y]) => { const q = new DOMPoint(x, y).matrixTransform(document.querySelector('.boardsvg').getScreenCTM()); return { x: q.x, y: q.y }; }, [x, y]);
+  const tapHole = async id => { const hp = holePos(id); const p = await toScreen([hp.x, hp.y]); if (cfg.touch) await page.touchscreen.tap(p.x, p.y); else await page.mouse.click(p.x, p.y); await wait(80); };
+  const pick = name => page.click(`.tool >> text="${name}"`);
+  try {
+    await page.goto(BASE); await page.waitForSelector('.lrow');
+    for (const href of ['#/sandbox', '#/sandbox/c01', '#/quiz', '#/badges']) if (!(await page.$(`a[href="${href}"]`))) throw new Error('home is missing ' + href);
+    // challenge c01 solved by taps
+    await page.click('a[href="#/sandbox/c01"]'); await page.waitForSelector('.sandbox .tool');
+    await pick(tr('part.wire')); await tapHole('p+3'); await tapHole('a3');
+    await pick(tr('part.resistor')); await tapHole('c3'); await tapHole('c6');
+    await pick(tr('part.led')); await tapHole('d6'); await tapHole('d7');
+    await pick(tr('part.wire')); await tapHole('a7'); await tapHole('p-7');
+    await page.waitForSelector('.chbox .hint.ok', { timeout: 4000 });
+    if (cfg.lang === 'he') { const bad = await unwrapped(); if (bad.length) throw new Error('sandbox: units outside a bidi run: ' + bad.join(', ')); }
+    // tutor
+    await page.click('.tutorbtn'); await page.waitForSelector('.tutor:not([hidden]) .tdiag li');
+    await page.fill('.tq', cfg.lang === 'he' ? 'חוק אוהם' : 'ohm law'); await page.press('.tq', 'Enter');
+    await page.waitForSelector('.tans p');
+    if (cfg.lang === 'he') { const bad = await unwrapped(); if (bad.length) throw new Error('tutor: units outside a bidi run: ' + bad.join(', ')); }
+    await page.click('.tclose');
+    if (await hscroll()) throw new Error('horizontal scroll in the sandbox');
+    // free sandbox: an example runs, the AND gate table is right through the UI model
+    await page.goto(`${BASE}#/sandbox`); await page.waitForSelector('.sandbox .tool');
+    await page.selectOption('.exsel', 'sb.ex.and'); await wait(200);
+    const high = await page.evaluate(() => { const p = __elab.page.debug; const c = p.circuit; const set = (a, b) => { c.comps.find(x => x.id === 'S1').props.on = !!a; c.comps.find(x => x.id === 'S2').props.on = !!b; return JSON.stringify(c).length && true; }; set(1, 1); p.load(c); return null; });
+    await wait(200);
+    const lit = await page.evaluate(() => __elab.page.debug.sim.comps.D1.lit);
+    if (!lit) throw new Error('AND example: LED should be lit with both switches up');
+    // quiz
+    await page.goto(`${BASE}#/quiz`); await page.waitForSelector('.startb'); await page.click('.startb');
+    for (let k = 0; k < 10; k++) { await page.click('.opt >> nth=0'); await page.click('.nextb'); }
+    await page.waitForSelector('.againb');
+    const best = await page.evaluate(() => JSON.parse(localStorage.getItem('elab.v1')).flags.quizBest);
+    if (typeof best !== 'number') throw new Error('quiz score not saved');
+    if (cfg.lang === 'he') { const bad = await unwrapped(); if (bad.length) throw new Error('quiz: units outside a bidi run: ' + bad.join(', ')); }
+    // badges
+    await page.goto(`${BASE}#/badges`); await page.waitForSelector('.badge');
+    if (!(await page.$('.badge.on'))) throw new Error('no badge earned after a challenge and a sandbox visit');
+    if (await hscroll()) throw new Error('horizontal scroll on badges');
+    // ESP32: switch the free lab and blink GPIO 18
+    await page.goto(`${BASE}#/arduino`); await page.waitForSelector('.lab .code');
+    await page.click('.boardsel [data-b="esp32"]'); await page.waitForSelector('.lab .code'); await wait(200);
+    await page.click('.run');
+    const seen = new Set();
+    for (let i = 0; i < 30 && seen.size < 2; i++) { await wait(100); seen.add(await page.evaluate(() => __elab.lab.debug.board.sim.comps.L1.lit)); }
+    if (seen.size < 2) throw new Error('ESP32 blink did not toggle L1');
+    await page.click('.stop');
+    await page.goto(`${BASE}#/arduino/e02-esp32-adc-pwm`); await page.waitForSelector('.guide .gnext');
+    if (await hscroll()) throw new Error('horizontal scroll in the ESP32 lesson');
+    await page.goto(`${BASE}#/arduino`); await page.waitForSelector('.boardsel'); await page.click('.boardsel [data-b="uno"]');
+    if (problems.length) throw new Error(problems.join(' | '));
+    console.log(`  ok   ${label}`);
+  } catch (e) { fail(label, e.message.split('\n')[0]); await shot(page, label); }
+  finally { await ctx.close(); }
+}
+
 for (const cfg of CONFIGS) {
   console.log(cfg.name);
   for (const lesson of LESSONS) await playLesson(cfg, lesson);
   await labCheck(cfg);
   await pagesCheck(cfg);
+  await phase5Check(cfg);
 }
 console.log('offline');
 await offlineCheck();

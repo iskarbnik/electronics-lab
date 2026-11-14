@@ -38,3 +38,16 @@ test('store ignores corrupt data', async () => {
   assert.equal(s.getStep('a'), 0);
   assert.equal(s.getStep('b'), 2);
 });
+
+test('store flags: booleans and numbers only, cleared on reset', async () => {
+  globalThis.localStorage = fakeStorage();
+  globalThis.localStorage.setItem('elab.v1', '{"flags":{"a":true,"b":85,"c":"x","d":{}}}');
+  const s = await import('../js/store.js?flags');
+  assert.equal(s.getFlag('a'), true);
+  assert.equal(s.getFlag('b'), 85);
+  assert.equal(s.getFlag('c'), null);
+  s.setFlag('ch:c01');
+  assert.deepEqual(s.flagsWithPrefix('ch:'), ['ch:c01']);
+  s.resetProgress();
+  assert.equal(s.getFlag('a'), null);
+});

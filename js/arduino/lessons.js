@@ -342,3 +342,98 @@ void loop() {
     ],
   },
 ];
+
+// ESP32 lessons run on the same kit with an ESP32 (3.3 V logic, GPIO numbers, 12 bit ADC).
+export const ESP32_LESSONS = [
+  {
+    id: 'e01-esp32-blink',
+    board: 'esp32',
+    title: T('ESP32: ההבהוב הראשון', 'ESP32: your first blink'),
+    summary: T('3.3 וולט, מספרי GPIO והבדלים מ-Arduino Uno.', '3.3 volts, GPIO numbers, and how it differs from an Arduino Uno.'),
+    circuit: 'kit',
+    steps: [
+      info(T(
+        'ה-ESP32 הוא מחשב זעיר חזק בהרבה מ-Uno: מעבד כפול מהיר, WiFi ו-Bluetooth. הוא עובד ב-3.3 V ולא ב-5 V, ולכן פין גבוה הוא 3.3 V. הפינים נקראים לפי מספר GPIO: הנורית האדומה כאן על GPIO 18. (WiFi ו-Bluetooth לא מדומים באפליקציה.)',
+        'The ESP32 is a tiny computer far stronger than an Uno: a fast dual-core processor, WiFi and Bluetooth. It runs at 3.3 V, not 5 V, so a high pin is 3.3 V. Pins are named by GPIO number: the red LED here is on GPIO 18. (WiFi and Bluetooth are not simulated in this app.)')),
+      code(T('הריצו וראו את הנורית האדומה מהבהבת.', 'Run it and watch the red LED blink.'),
+        T(
+`void setup() {
+  pinMode(18, OUTPUT);
+}
+
+void loop() {
+  digitalWrite(18, HIGH);
+  delay(500);
+  digitalWrite(18, LOW);
+  delay(500);
+}
+`,
+`void setup() {
+  pinMode(18, OUTPUT);
+}
+
+void loop() {
+  digitalWrite(18, HIGH);
+  delay(500);
+  digitalWrite(18, LOW);
+  delay(500);
+}
+`), ({ board }) => toggles(board, 'L1') >= 2),
+      quiz(T('מה המתח בפין ESP32 שמוגדר HIGH?', 'What voltage is an ESP32 pin set to HIGH?'),
+        [T('3.3 V', '3.3 V'), T('5 V', '5 V'), T('9 V', '9 V')], 0,
+        T('ה-ESP32 הוא רכיב של 3.3 V. חיבור 5 V לפין שלו עלול לפגוע בו.', 'The ESP32 is a 3.3 V part. Connecting 5 V to one of its pins can damage it.')),
+      quiz(T('נורית אדומה (2 V) על פין של 3.3 V וזרם רצוי של 10 mA. איזה נגד?', 'A red LED (2 V) on a 3.3 V pin with 10 mA wanted. Which resistor?'),
+        [T('130 Ω', '130 Ω'), T('13 Ω', '13 Ω'), T('1.3 kΩ', '1.3 kΩ')], 0,
+        T('<code>R = (3.3 - 2) / 0.01 = 130 Ω</code>.', '<code>R = (3.3 - 2) / 0.01 = 130 Ω</code>.')),
+    ],
+  },
+  {
+    id: 'e02-esp32-adc-pwm',
+    board: 'esp32',
+    title: T('ESP32: ADC של 12 ביט ו-LEDC', 'ESP32: 12 bit ADC and LEDC'),
+    summary: T('קוראים 0 עד 4095 ומעמעמים עם PWM על כל פין.', 'Read 0 to 4095 and dim with PWM on any pin.'),
+    circuit: 'kit',
+    steps: [
+      info(T(
+        'ה-ESP32 מודד מתח ב-12 ביט: מספר בין 0 ל-4095 עבור 0 עד 3.3 V. PWM בו נעשה עם <code>ledcAttach(פין, תדר, ביטים)</code> ואז <code>ledcWrite(פין, ערך)</code>, ואפשר על כל פין.',
+        'The ESP32 measures voltage in 12 bits: a number from 0 to 4095 for 0 to 3.3 V. PWM is done with <code>ledcAttach(pin, frequency, bits)</code> and then <code>ledcWrite(pin, value)</code>, and works on any pin.')),
+      code(T('הריצו וסובבו את הפוטנציומטר (GPIO 34). הנורית הירוקה מתעממת והמוניטור מראה מספרים.', 'Run it and turn the potentiometer (GPIO 34). The green LED dims and the monitor shows numbers.'),
+        T(
+`void setup() {
+  Serial.begin(115200);
+  ledcAttach(21, 5000, 8);
+}
+
+void loop() {
+  int raw = analogRead(34);
+  ledcWrite(21, map(raw, 0, 4095, 0, 255));
+  Serial.print("ADC = ");
+  Serial.print(raw);
+  Serial.print("  volts = ");
+  Serial.println(raw * 3.3 / 4095.0);
+  delay(200);
+}
+`,
+`void setup() {
+  Serial.begin(115200);
+  ledcAttach(21, 5000, 8);
+}
+
+void loop() {
+  int raw = analogRead(34);
+  ledcWrite(21, map(raw, 0, 4095, 0, 255));
+  Serial.print("ADC = ");
+  Serial.print(raw);
+  Serial.print("  volts = ");
+  Serial.println(raw * 3.3 / 4095.0);
+  delay(200);
+}
+`), ({ board, out }) => /ADC = \d+/.test(out) && board.stats.analog.size >= 3,
+        (board, ms) => { const p = board.circuit.comps.find(c => c.id === 'P1'); p.props.pos = Math.min(1, ms / 1500); board.dirty = true; }),
+      quiz(T('מה הערך הגבוה ביותר ש-<code>analogRead</code> מחזיר ב-ESP32?', 'What is the highest value <code>analogRead</code> returns on an ESP32?'),
+        [T('4095', '4095'), T('1023', '1023'), T('255', '255')], 0, T('12 ביט נותנים 4096 ערכים: 0 עד 4095.', '12 bits give 4096 values: 0 to 4095.')),
+      quiz(T('מה נותן <code>ledcWrite(21, 128)</code> כשהרזולוציה 8 ביט?', 'What does <code>ledcWrite(21, 128)</code> give with an 8 bit resolution?'),
+        [T('בערך חצי מהבהירות', 'About half the brightness'), T('בהירות מלאה', 'Full brightness'), T('כיבוי', 'Off')], 0, T('8 ביט הם 0 עד 255, ו-128 הוא כמעט חצי מזה.', '8 bits are 0 to 255, and 128 is almost half of that.')),
+    ],
+  },
+];
